@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   email VARCHAR(255) NOT NULL,
   phone VARCHAR(20) NULL,
   password_hash VARCHAR(255) NOT NULL,
+  role VARCHAR(20) NOT NULL DEFAULT 'shop',
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -37,7 +38,10 @@ CREATE TABLE IF NOT EXISTS shops (
   shop_name VARCHAR(150) NOT NULL,
   category VARCHAR(100) NULL,
   description TEXT NULL,
+  contact_name VARCHAR(100) NULL,
   contact_phone VARCHAR(20) NULL,
+  social_url VARCHAR(255) NULL,
+  image_url VARCHAR(255) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UNIQUE KEY uq_shops_user (user_id),
@@ -126,6 +130,25 @@ CREATE TABLE IF NOT EXISTS bookings (
   CONSTRAINT fk_bookings_booth FOREIGN KEY (booth_id) REFERENCES booths(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
   CONSTRAINT fk_bookings_shop FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE RESTRICT ON UPDATE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ---------------------------------------------------------------------
+-- อัปเกรดฐานข้อมูลที่สร้างจากเวอร์ชันก่อนหน้า (ไม่มีผลถ้ามีคอลัมน์อยู่แล้ว)
+--   users.role          : 'shop' (ค่าเริ่มต้น) หรือ 'admin' (ผู้ดูแลตลาด)
+--   shops.contact_name  : ชื่อผู้ติดต่อ (ไม่แสดงต่อลูกค้า)
+--   shops.social_url    : ลิงก์ช่องทางติดตามร้าน (แสดงต่อลูกค้า)
+--   shops.image_url     : URL รูปร้าน เช่น /images/shops/shop-12-xxxx.jpg
+-- ---------------------------------------------------------------------
+ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'shop' AFTER password_hash;
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS contact_name VARCHAR(100) NULL AFTER description;
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS social_url VARCHAR(255) NULL AFTER contact_phone;
+ALTER TABLE shops ADD COLUMN IF NOT EXISTS image_url VARCHAR(255) NULL AFTER social_url;
+
+-- ---------------------------------------------------------------------
+-- การตั้งผู้ดูแลตลาดคนแรก (ทำครั้งเดียว ด้วยมือ):
+--   1) สมัครบัญชีร้านค้าตามปกติผ่านหน้าเว็บ
+--   2) รันคำสั่งด้านล่าง โดยเปลี่ยนอีเมลเป็นของบัญชีนั้น แล้วเข้าสู่ระบบใหม่
+--   UPDATE users SET role = 'admin' WHERE email = 'owner@example.com';
+-- ---------------------------------------------------------------------
 
 -- =====================================================================
 -- ข้อมูลตั้งต้น (ตัวอย่าง — เจ้าของโครงการควรแก้เป็นข้อมูลตลาดจริง)

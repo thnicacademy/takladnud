@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="t">
+  <title id="t">ตากหลาดนัด logo: market-stall awning with a map pin</title>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="#2D5A48"/>
+  <!-- awning valance -->
+  <rect x="8" y="9" width="48" height="6" rx="3" fill="#FCEFC7"/>
+  <!-- striped scalloped awning -->
+  <path d="M10 13H21V21A5.5 5.5 0 0 1 10 21Z" fill="#E8A598"/>
+  <path d="M21 13H32V21A5.5 5.5 0 0 1 21 21Z" fill="#FBF8F1"/>
+  <path d="M32 13H43V21A5.5 5.5 0 0 1 32 21Z" fill="#E8A598"/>
+  <path d="M43 13H54V21A5.5 5.5 0 0 1 43 21Z" fill="#FBF8F1"/>
+  <!-- stall posts -->
+  <rect x="11" y="24" width="3.5" height="28" rx="1.75" fill="#8FBF9F"/>
+  <rect x="49.5" y="24" width="3.5" height="28" rx="1.75" fill="#8FBF9F"/>
+  <!-- map pin -->
+  <path d="M32 54C27.5 48.5 22 43.5 22 37A10 10 0 0 1 42 37C42 43.5 36.5 48.5 32 54Z" fill="#FBF8F1"/>
+  <circle cx="32" cy="37" r="4" fill="#E8A598"/>
+</svg>

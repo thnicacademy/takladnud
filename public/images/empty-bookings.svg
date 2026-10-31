@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 160" width="200" height="160" role="img" aria-labelledby="t">
+  <title id="t">No bookings yet: an empty calendar with an awning header and a stall ticket</title>
+  <!-- soft background blob -->
+  <path d="M28 86C22 50 54 22 100 22S178 44 176 84S148 146 98 146S34 122 28 86Z" fill="#E3DDF5"/>
+  <ellipse cx="96" cy="136" rx="56" ry="4.5" fill="#8FBF9F" opacity=".45"/>
+  <!-- calendar body -->
+  <rect x="46" y="38" width="100" height="94" rx="10" fill="#fff"/>
+  <!-- awning header -->
+  <path d="M46 48a10 10 0 0 1 10-10h80a10 10 0 0 1 10 10v2H46Z" fill="#2D5A48"/>
+  <path d="M46 49h20v8a10 10 0 0 1-20 0Z" fill="#E8A598"/>
+  <path d="M66 49h20v8a10 10 0 0 1-20 0Z" fill="#FBD9C9"/>
+  <path d="M86 49h20v8a10 10 0 0 1-20 0Z" fill="#E8A598"/>
+  <path d="M106 49h20v8a10 10 0 0 1-20 0Z" fill="#FBD9C9"/>
+  <path d="M126 49h20v8a10 10 0 0 1-20 0Z" fill="#E8A598"/>
+  <!-- binder rings -->
+  <rect x="66" y="30" width="6" height="14" rx="3" fill="#1F3631"/>
+  <rect x="120" y="30" width="6" height="14" rx="3" fill="#1F3631"/>
+  <!-- date grid -->
+  <g fill="#CDE8D6">
+    <rect x="57" y="76" width="15" height="12" rx="3"/><rect x="77" y="76" width="15" height="12" rx="3"/><rect x="97" y="76" width="15" height="12" rx="3"/><rect x="117" y="76" width="15" height="12" rx="3"/>
+    <rect x="57" y="94" width="15" height="12" rx="3"/><rect x="77" y="94" width="15" height="12" rx="3"/><rect x="117" y="94" width="15" height="12" rx="3"/>
+    <rect x="57" y="112" width="15" height="12" rx="3"/><rect x="77" y="112" width="15" height="12" rx="3"/><rect x="97" y="112" width="15" height="12" rx="3"/>
+  </g>
+  <!-- the empty, open slot -->
+  <rect x="97.5" y="94.5" width="14" height="11" rx="3" fill="#FBF8F1" stroke="#E8A598" stroke-width="1.5" stroke-dasharray="3 2"/>
+  <!-- ticket -->
+  <g transform="translate(150 112) rotate(-14)">
+    <path d="M-24-14H24V-4A4 4 0 0 0 24 4V14H-24V4A4 4 0 0 0-24-4Z" fill="#FCEFC7"/>
+    <path d="M10-10V10" stroke="#E8A598" stroke-width="1.5" stroke-dasharray="2.5 2.5"/>
+    <path d="M-16-4h18" stroke="#2D5A48" stroke-width="3" stroke-linecap="round"/>
+    <path d="M-16 4h11" stroke="#8FBF9F" stroke-width="3" stroke-linecap="round"/>
+    <circle cx="17" cy="0" r="3" fill="#E8A598"/>
+  </g>
+  <!-- sparkles -->
+  <circle cx="30" cy="48" r="3" fill="#E8A598"/>
+  <circle cx="170" cy="50" r="3.5" fill="#FCEFC7"/>
+  <path d="M164 28v8M160 32h8" stroke="#8FBF9F" stroke-width="2" stroke-linecap="round"/>
+</svg>

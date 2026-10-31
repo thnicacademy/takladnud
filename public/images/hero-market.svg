@@ -1,0 +1,198 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 420" width="560" height="420" role="img" aria-labelledby="t">
+  <title id="t">Illustration of a cheerful open-air community market with striped stalls, fresh produce and shoppers</title>
+  <defs>
+    <clipPath id="panel"><rect x="16" y="16" width="528" height="388" rx="44"/></clipPath>
+  </defs>
+  <g clip-path="url(#panel)">
+    <!-- sky -->
+    <rect x="16" y="16" width="528" height="388" fill="#CFE6F2"/>
+    <!-- sun -->
+    <circle cx="468" cy="72" r="40" fill="#FCEFC7" opacity=".6"/>
+    <circle cx="468" cy="72" r="28" fill="#FCEFC7"/>
+    <!-- clouds -->
+    <g fill="#fff">
+      <circle cx="110" cy="96" r="16"/><circle cx="134" cy="86" r="22"/><circle cx="158" cy="98" r="14"/>
+      <rect x="94" y="96" width="78" height="16" rx="8"/>
+      <circle cx="302" cy="62" r="12"/><circle cx="320" cy="54" r="17"/><circle cx="338" cy="64" r="11"/>
+      <rect x="290" y="62" width="59" height="13" rx="6.5"/>
+    </g>
+    <!-- far hills -->
+    <path d="M16 252C90 214 160 212 230 236S350 262 410 230S500 206 544 222V404H16Z" fill="#8FBF9F"/>
+    <!-- distant trees on the hill -->
+    <g fill="#2D5A48">
+      <rect x="195" y="222" width="4" height="16" rx="2"/>
+      <rect x="360" y="240" width="4" height="14" rx="2"/>
+    </g>
+    <circle cx="197" cy="214" r="12" fill="#2D5A48" opacity=".8"/>
+    <circle cx="210" cy="222" r="8" fill="#2D5A48" opacity=".6"/>
+    <circle cx="362" cy="234" r="10" fill="#2D5A48" opacity=".8"/>
+    <circle cx="350" cy="240" r="7" fill="#2D5A48" opacity=".6"/>
+    <!-- ground -->
+    <path d="M16 300C150 286 410 286 544 300V404H16Z" fill="#CDE8D6"/>
+    <path d="M60 392C170 372 390 372 500 392Z" fill="#fff" opacity=".45"/>
+
+    <!-- bunting poles -->
+    <rect x="34" y="104" width="5" height="210" rx="2.5" fill="#2D5A48"/>
+    <rect x="521" y="104" width="5" height="210" rx="2.5" fill="#2D5A48"/>
+    <circle cx="36.5" cy="104" r="5" fill="#E8A598"/>
+    <circle cx="523.5" cy="104" r="5" fill="#E8A598"/>
+    <!-- bunting -->
+    <path d="M37 112Q280 160 524 112" fill="none" stroke="#1F3631" stroke-width="1.5" opacity=".6"/>
+    <path d="M64 118h20l-10 18Z" fill="#FBD9C9"/>
+    <path d="M104 124h20l-10 18Z" fill="#FCEFC7"/>
+    <path d="M144 128h20l-10 18Z" fill="#E3DDF5"/>
+    <path d="M184 131h20l-10 18Z" fill="#E8A598"/>
+    <path d="M224 133h20l-10 18Z" fill="#fff"/>
+    <path d="M264 134h20l-10 18Z" fill="#FBD9C9"/>
+    <path d="M304 134h20l-10 18Z" fill="#FCEFC7"/>
+    <path d="M344 133h20l-10 18Z" fill="#E3DDF5"/>
+    <path d="M384 131h20l-10 18Z" fill="#E8A598"/>
+    <path d="M424 128h20l-10 18Z" fill="#fff"/>
+    <path d="M464 124h20l-10 18Z" fill="#FBD9C9"/>
+
+    <!-- soft shadows -->
+    <g fill="#8FBF9F" opacity=".45">
+      <ellipse cx="115" cy="322" rx="66" ry="7"/>
+      <ellipse cx="280" cy="322" rx="66" ry="7"/>
+      <ellipse cx="445" cy="322" rx="66" ry="7"/>
+    </g>
+
+    <!-- ========== STALL 1 (coral) ========== -->
+    <g>
+      <rect x="70" y="204" width="90" height="60" fill="#FBF8F1"/>
+      <rect x="64" y="196" width="5" height="124" rx="2.5" fill="#2D5A48"/>
+      <rect x="161" y="196" width="5" height="124" rx="2.5" fill="#2D5A48"/>
+      <!-- vendor -->
+      <path d="M97 264v-14a18 18 0 0 1 36 0v14Z" fill="#8FBF9F"/>
+      <circle cx="115" cy="222" r="11" fill="#FBD9C9"/>
+      <path d="M104 221a11 11 0 0 1 22 0c-4-4-8-6-11-6s-7 2-11 6Z" fill="#1F3631"/>
+      <!-- awning -->
+      <rect x="54" y="166" width="122" height="12" rx="6" fill="#2D5A48"/>
+      <path d="M60 176h22v18a11 11 0 0 1-22 0Z" fill="#E8A598"/>
+      <path d="M82 176h22v18a11 11 0 0 1-22 0Z" fill="#fff"/>
+      <path d="M104 176h22v18a11 11 0 0 1-22 0Z" fill="#E8A598"/>
+      <path d="M126 176h22v18a11 11 0 0 1-22 0Z" fill="#fff"/>
+      <path d="M148 176h22v18a11 11 0 0 1-22 0Z" fill="#E8A598"/>
+      <!-- counter -->
+      <rect x="60" y="258" width="110" height="10" rx="4" fill="#fff"/>
+      <rect x="64" y="266" width="102" height="54" rx="4" fill="#FBD9C9"/>
+      <path d="M64 280h102" stroke="#fff" stroke-width="3" opacity=".7"/>
+      <!-- tomatoes basket -->
+      <circle cx="80" cy="248" r="6" fill="#E8A598"/>
+      <circle cx="91" cy="246" r="6" fill="#E8A598"/>
+      <circle cx="86" cy="241" r="5.5" fill="#E8A598"/>
+      <path d="M72 249h28l-3 10H75Z" fill="#2D5A48"/>
+      <!-- greens basket -->
+      <ellipse cx="141" cy="246" rx="7" ry="10" fill="#8FBF9F"/>
+      <ellipse cx="151" cy="247" rx="6" ry="9" fill="#2D5A48"/>
+      <ellipse cx="133" cy="248" rx="5" ry="8" fill="#2D5A48"/>
+      <path d="M127 250h30l-3 9h-24Z" fill="#FCEFC7"/>
+      <path d="M127 250h30" stroke="#E8A598" stroke-width="2"/>
+    </g>
+
+    <!-- ========== STALL 2 (sage) ========== -->
+    <g>
+      <rect x="235" y="204" width="90" height="60" fill="#FBF8F1"/>
+      <rect x="229" y="196" width="5" height="124" rx="2.5" fill="#2D5A48"/>
+      <rect x="326" y="196" width="5" height="124" rx="2.5" fill="#2D5A48"/>
+      <!-- vendor with headscarf -->
+      <path d="M262 264v-14a18 18 0 0 1 36 0v14Z" fill="#E8A598"/>
+      <path d="M266 226a14 14 0 0 1 28 0v12c0 4-4 6-14 6s-14-2-14-6Z" fill="#E3DDF5"/>
+      <circle cx="280" cy="225" r="8.5" fill="#E8A598"/>
+      <!-- awning -->
+      <rect x="219" y="166" width="122" height="12" rx="6" fill="#2D5A48"/>
+      <path d="M225 176h22v18a11 11 0 0 1-22 0Z" fill="#8FBF9F"/>
+      <path d="M247 176h22v18a11 11 0 0 1-22 0Z" fill="#fff"/>
+      <path d="M269 176h22v18a11 11 0 0 1-22 0Z" fill="#8FBF9F"/>
+      <path d="M291 176h22v18a11 11 0 0 1-22 0Z" fill="#fff"/>
+      <path d="M313 176h22v18a11 11 0 0 1-22 0Z" fill="#8FBF9F"/>
+      <!-- counter -->
+      <rect x="225" y="258" width="110" height="10" rx="4" fill="#fff"/>
+      <rect x="229" y="266" width="102" height="54" rx="4" fill="#8FBF9F"/>
+      <path d="M229 280h102" stroke="#fff" stroke-width="3" opacity=".6"/>
+      <!-- fruit: mangoes & oranges -->
+      <ellipse cx="246" cy="246" rx="8" ry="6" fill="#FCEFC7"/>
+      <ellipse cx="257" cy="244" rx="8" ry="6" fill="#FCEFC7" transform="rotate(-15 257 244)"/>
+      <path d="M237 249h30l-3 10h-24Z" fill="#E8A598"/>
+      <circle cx="304" cy="246" r="6" fill="#FBD9C9"/>
+      <circle cx="315" cy="246" r="6" fill="#FBD9C9"/>
+      <circle cx="309.5" cy="240" r="6" fill="#FBD9C9"/>
+      <path d="M294 250h30l-3 9h-24Z" fill="#2D5A48"/>
+    </g>
+
+    <!-- ========== STALL 3 (lavender / peach) ========== -->
+    <g>
+      <rect x="400" y="204" width="90" height="60" fill="#FBF8F1"/>
+      <rect x="394" y="196" width="5" height="124" rx="2.5" fill="#2D5A48"/>
+      <rect x="491" y="196" width="5" height="124" rx="2.5" fill="#2D5A48"/>
+      <!-- awning -->
+      <rect x="384" y="166" width="122" height="12" rx="6" fill="#2D5A48"/>
+      <path d="M390 176h22v18a11 11 0 0 1-22 0Z" fill="#E3DDF5"/>
+      <path d="M412 176h22v18a11 11 0 0 1-22 0Z" fill="#fff"/>
+      <path d="M434 176h22v18a11 11 0 0 1-22 0Z" fill="#E3DDF5"/>
+      <path d="M456 176h22v18a11 11 0 0 1-22 0Z" fill="#fff"/>
+      <path d="M478 176h22v18a11 11 0 0 1-22 0Z" fill="#E3DDF5"/>
+      <!-- hanging goods -->
+      <path d="M422 204v10M468 204v10" stroke="#1F3631" stroke-width="1.5" opacity=".5"/>
+      <circle cx="422" cy="220" r="7" fill="#FCEFC7"/>
+      <circle cx="468" cy="220" r="7" fill="#FBD9C9"/>
+      <!-- counter -->
+      <rect x="390" y="258" width="110" height="10" rx="4" fill="#fff"/>
+      <rect x="394" y="266" width="102" height="54" rx="4" fill="#E3DDF5"/>
+      <path d="M394 280h102" stroke="#fff" stroke-width="3" opacity=".7"/>
+      <!-- flowers / plants in pots -->
+      <circle cx="414" cy="238" r="7" fill="#E8A598"/>
+      <circle cx="414" cy="238" r="2.5" fill="#FCEFC7"/>
+      <path d="M406 246h16l-2 13h-12Z" fill="#2D5A48"/>
+      <circle cx="445" cy="236" r="8" fill="#8FBF9F"/>
+      <circle cx="452" cy="242" r="6" fill="#2D5A48"/>
+      <path d="M437 246h20l-2 13h-16Z" fill="#FBD9C9"/>
+      <circle cx="477" cy="238" r="7" fill="#FCEFC7"/>
+      <circle cx="477" cy="238" r="2.5" fill="#E8A598"/>
+      <path d="M469 246h16l-2 13h-12Z" fill="#2D5A48"/>
+    </g>
+
+    <!-- ========== SHOPPERS ========== -->
+    <!-- shopper 1 with basket -->
+    <g>
+      <rect x="183" y="358" width="8" height="34" rx="4" fill="#2D5A48"/>
+      <rect x="196" y="358" width="8" height="34" rx="4" fill="#2D5A48"/>
+      <path d="M178 362v-28a15 15 0 0 1 30 0v28Z" fill="#FCEFC7"/>
+      <circle cx="193" cy="300" r="12" fill="#E8A598"/>
+      <path d="M181 299a12 12 0 0 1 24 0c-3-5-8-8-12-8s-9 3-12 8Z" fill="#1F3631"/>
+      <path d="M204 348h20l-3 14h-14Z" fill="#E8A598"/>
+      <path d="M207 348a7 7 0 0 1 14 0" fill="none" stroke="#E8A598" stroke-width="2.5"/>
+      <circle cx="210" cy="345" r="3.5" fill="#8FBF9F"/>
+      <circle cx="217" cy="344" r="3.5" fill="#2D5A48"/>
+    </g>
+    <!-- child -->
+    <g>
+      <rect x="152" y="366" width="6" height="26" rx="3" fill="#2D5A48"/>
+      <rect x="160" y="366" width="6" height="26" rx="3" fill="#2D5A48"/>
+      <path d="M168 352l12-4" stroke="#FBD9C9" stroke-width="4" stroke-linecap="round"/>
+      <path d="M148 370v-20a11 11 0 0 1 22 0v20Z" fill="#E3DDF5"/>
+      <circle cx="159" cy="327" r="9" fill="#FBD9C9"/>
+      <circle cx="159" cy="318" r="4" fill="#1F3631"/>
+    </g>
+    <!-- shopper 2 with headscarf -->
+    <g>
+      <path d="M346 392l4-58a14 14 0 0 1 28 0l4 58Z" fill="#E8A598"/>
+      <path d="M348 304a16 16 0 0 1 32 0v14c0 6-6 10-16 10s-16-4-16-10Z" fill="#8FBF9F"/>
+      <circle cx="364" cy="304" r="9.5" fill="#FBD9C9"/>
+    </g>
+    <!-- shopper 3 older adult with cane -->
+    <g>
+      <rect x="275" y="358" width="8" height="34" rx="4" fill="#1F3631"/>
+      <rect x="288" y="358" width="8" height="34" rx="4" fill="#1F3631"/>
+      <path d="M270 362v-28a15 15 0 0 1 30 0v28Z" fill="#CFE6F2"/>
+      <circle cx="285" cy="301" r="12" fill="#FBD9C9"/>
+      <path d="M273 300a12 12 0 0 1 24 0c-4-3-8-4-12-4s-8 1-12 4Z" fill="#fff"/>
+      <path d="M306 344v48" stroke="#2D5A48" stroke-width="3" stroke-linecap="round"/>
+      <path d="M300 345a6 6 0 0 1 6-1" fill="none" stroke="#2D5A48" stroke-width="3" stroke-linecap="round"/>
+    </g>
+
+    <!-- foreground bushes -->
+    <path d="M16 404v-20a14 14 0 0 1 24-8a16 16 0 0 1 28 6a12 12 0 0 1 10 22Z" fill="#8FBF9F"/>
+    <path d="M544 404v-24a14 14 0 0 0-24-6a16 16 0 0 0-28 8a12 12 0 0 0-8 22Z" fill="#8FBF9F"/>
+  </g>
+</svg>

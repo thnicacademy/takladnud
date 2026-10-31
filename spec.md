@@ -11,7 +11,10 @@
 - การจองที่ผ่านการตรวจสอบจะมีสถานะ `confirmed` ทันที ไม่มีขั้นตอนอนุมัติ Admin
 - ผู้ค้าสามารถยกเลิกการจองได้ทุกเวลา โดยเปลี่ยนสถานะเป็น `cancelled` และเก็บประวัติไว้
 - Shop ใช้อีเมลเข้าสู่ระบบ; เบอร์โทรเป็นข้อมูลติดต่อ ไม่ใช่ credential สำหรับ login
-- เบอร์ติดต่อที่ร้านกรอกใน `contact_phone` เปิดเผยแก่ลูกค้าบนหน้าสาธารณะ
+- เบอร์ติดต่อที่ร้านกรอกใน `contact_phone` และลิงก์ช่องทางติดตาม `social_url` เปิดเผยแก่ลูกค้าบนหน้าสาธารณะ; ชื่อผู้ติดต่อ `contact_name` ไม่เปิดเผย
+- ผู้ดูแลตลาด (Admin) คือบัญชีที่มี `users.role = 'admin'`; ตั้งคนแรกด้วยคำสั่ง SQL หลังสมัครบัญชีปกติ (ดู `migration.sql`) ไม่มีหน้าสมัคร Admin
+- ร้านจองแผงเดียวกันได้หลายรอบในคำขอเดียว (สูงสุด 12 รอบ) โดยแต่ละรอบตรวจสอบแยกกัน
+- เวลาแสดงผลใช้เขตเวลา `Asia/Bangkok`
 
 ## กลุ่มผู้ใช้งานและความต้องการ
 
@@ -36,14 +39,21 @@
 - **Customer:** ดูตำแหน่งและรายละเอียดร้านค้าบนแผนผัง
 - **Customer:** ค้นหาหรือกรองร้านตามชื่อและประเภทสินค้า
 - **Customer:** ดูวันและเวลาเปิดทำการของตลาด
+- **Shop:** จองแผงเดียวกันหลายรอบในครั้งเดียว และปุ่ม “จองแผงเดิมอีกครั้ง” จากหน้าหลักร้าน
+- **Shop:** อัปโหลดรูปหน้าร้าน (JPG/PNG/WEBP ระบบย่อขนาดให้) และระบุชื่อผู้ติดต่อ/ลิงก์ช่องทางติดตาม
+- **Shop:** QR Code ประจำร้าน ลิงก์ไปหน้ารายละเอียดร้าน สำหรับพิมพ์ติดหน้าแผง
+- **Customer:** “ร้านที่อยากแวะ” — บันทึกร้านไว้ในเบราว์เซอร์ ระบบเรียงลำดับเดินจากทางเข้าและวาดเส้นทางบนผัง
+- **Customer:** ปุ่มนำทางไปตลาด (Google Maps) และปุ่มเลือกประเภทสินค้าแบบเร็ว
 
-### ฟีเจอร์ที่เก็บไว้สำหรับอนาคต (ยังไม่ทำในตอนนี้)
+### ฟีเจอร์ผู้ดูแลตลาด (Admin)
 
-ฟีเจอร์ผู้ดูแลตลาด (Admin) ยังไม่อยู่ในขอบเขตการพัฒนาปัจจุบัน แต่บันทึกไว้เป็นแนวทางสำหรับอนาคต ได้แก่:
-- เพิ่มและแก้ไขผัง แผง และข้อมูลตลาด
-- ตรวจสอบ อนุมัติ หรือปฏิเสธการจอง
-- จัดการสถานะแผง เช่น ว่าง จองแล้ว หรือปิดปรับปรุง
-- จัดการข้อมูลผู้ค้าและร้านค้า
+เดิมบันทึกไว้เป็นงานอนาคต และเพิ่มเข้าขอบเขตแล้ว เพื่อให้ตลาดใช้งานได้ต่อเนื่องโดยไม่ต้องแก้ฐานข้อมูลเอง:
+- แก้ไขข้อมูลตลาด (ชื่อ สถานที่ เวลาเปิด–ปิด คำอธิบาย การเปิดแสดง)
+- เพิ่มรอบตลาดทีละรอบหรือทุกสัปดาห์ (1–26 สัปดาห์), แก้ไขรอบ, เปลี่ยนสถานะ; งดตลาด (`cancelled`) จะยกเลิกการจองที่ยังใช้งานของรอบนั้นอัตโนมัติ
+- เพิ่ม/แก้ไขแผงและผัง: หมายเลข ขนาด ราคา สถานะ และวางตำแหน่งด้วยการแตะบนผัง
+- ดูการจองทุกร้านตามรอบ/สถานะ/คำค้น พร้อมข้อมูลติดต่อร้าน; อนุมัติ (`pending`→`confirmed`), ปฏิเสธ (`rejected`) หรือยกเลิก (`cancelled`)
+- ค้นหาร้าน ดูจำนวนการจอง และปิด/เปิดใช้งานบัญชีร้าน (ปิดแล้วออกจากระบบทันที)
+- ยังไม่ทำ: การสร้างตลาดใหม่ (ตกลงมีตลาดเดียว), การลบข้อมูลที่มีประวัติ, การชำระเงิน และระบบแจ้งเตือน
 
 ## แนวทางออกแบบหน้าจอ
 
@@ -110,9 +120,18 @@
 - ข้อมูลติดต่อหรือช่องทางติดตาม หากร้านค้าระบุไว้
 - ปุ่มกลับไปยังแผนผังหรือผลการค้นหา
 
-### หน้าผู้ดูแลตลาด (Admin) — เก็บไว้สำหรับอนาคต
+### หน้าผู้ดูแลตลาด (Admin)
 
-ยังไม่พัฒนาในตอนนี้ โดยหน้าจอจัดการตลาด การอนุมัติการจอง และการดูแลข้อมูลผู้ค้า จะพิจารณาออกแบบเมื่อเริ่มทำฟีเจอร์ Admin
+- เข้าจากเมนู “ผู้ดูแลตลาด” (แสดงเฉพาะบัญชี admin) มีแท็บ: ภาพรวม, รอบตลาด, แผงและผัง, การจอง, ร้านค้า, ข้อมูลตลาด
+- ภาพรวม: จำนวนร้านที่ใช้งาน, รอบที่จะถึง, จำนวนแผงที่จองแล้วและค่าเช่ารอบถัดไป, คำเตือนเมื่อรอบตลาดเหลือน้อยกว่า 4 รอบ
+- ทุกการกระทำที่ย้อนกลับยาก (งดตลาด ปฏิเสธ/ยกเลิกการจอง ปิดใช้งานร้าน) มีกล่องยืนยันก่อน
+
+### แนวทางภาพและแบรนด์
+
+- โลโก้ `public/images/logo.svg` (แผงหลังคาลายทางรวมกับหมุดแผนที่) ใช้ที่ header, footer, หน้าเข้าสู่ระบบ และ favicon — เปลี่ยนโลโก้ได้ด้วยการแทนที่ไฟล์นี้
+- ภาพประกอบใน `public/images/`: `hero-market.svg`, `empty-shops.svg`, `empty-bookings.svg`, `shop-placeholder.svg` (ใช้แทนรูปร้านที่ยังไม่อัปโหลด), `pattern-awning.svg` (แถบลายหลังคาตกแต่ง)
+- รูปร้านที่อัปโหลดเก็บใน `public/images/shops/` และเรียกด้วย URL `/images/shops/<ไฟล์>`
+- ธีมพาสเทล: ครีม `#FBF8F1`, มินต์ `#CDE8D6`, ฟ้า `#CFE6F2`, ลาเวนเดอร์ `#E3DDF5`, พีช `#FBD9C9`, เนย `#FCEFC7` กับสีหลักเขียวเข้ม `#2D5A48`; หัวข้อใช้ฟอนต์ Prompt เนื้อหาใช้ IBM Plex Sans Thai
 
 ## แบบฐานข้อมูลเบื้องต้น (MariaDB)
 
@@ -136,6 +155,7 @@
 | `email` | `VARCHAR(255)` | อีเมลสำหรับเข้าสู่ระบบ, required และ unique |
 | `phone` | `VARCHAR(20)` | เบอร์โทรศัพท์บัญชี/ติดต่อ, เก็บเป็นข้อความเพื่อรักษาเลข 0 นำหน้า, nullable |
 | `password_hash` | `VARCHAR(255)` | password hash เท่านั้น |
+| `role` | `VARCHAR(20)` | `shop` (ค่าเริ่มต้น) หรือ `admin` |
 | `created_at` | `DATETIME` | วันเวลาสร้างบัญชี, default เวลาปัจจุบัน |
 | `updated_at` | `DATETIME` | วันเวลาแก้ไขล่าสุด |
 | `is_active` | `TINYINT(1)` | 1 ใช้งาน, 0 ปิดใช้งาน |
@@ -151,7 +171,10 @@
 | `shop_name` | `VARCHAR(150)` | ชื่อร้าน, required |
 | `category` | `VARCHAR(100)` | ประเภทสินค้า เช่น อาหาร เสื้อผ้า งานฝีมือ |
 | `description` | `TEXT` | รายละเอียดร้าน, nullable |
+| `contact_name` | `VARCHAR(100)` | ชื่อผู้ติดต่อ สำหรับผู้ดูแลตลาด ไม่แสดงแก่ลูกค้า, nullable |
 | `contact_phone` | `VARCHAR(20)` | เบอร์ติดต่อที่แสดงแก่ลูกค้า, nullable |
+| `social_url` | `VARCHAR(255)` | ลิงก์ช่องทางติดตาม (http/https เท่านั้น) แสดงแก่ลูกค้า, nullable |
+| `image_url` | `VARCHAR(255)` | path รูปร้าน `/images/shops/...`, nullable |
 | `created_at` | `DATETIME` | วันเวลาสร้างข้อมูล |
 | `updated_at` | `DATETIME` | วันเวลาแก้ไขล่าสุด |
 
@@ -221,7 +244,7 @@
 | `created_at` | `DATETIME` | วันเวลาสร้างรายการ |
 | `updated_at` | `DATETIME` | วันเวลาแก้ไขล่าสุด |
 
-เพิ่ม foreign key ไปยังสามตารางที่อ้างถึง และ index `(shop_id, status)`, `(event_id, booth_id, status)` สำหรับตรวจรายการและสถานะ ห้ามมีการจอง `pending` หรือ `confirmed` ซ้ำสำหรับแผงเดียวกันในรอบเดียวกัน การตรวจและสร้างการจองต้องทำใน transaction พร้อมล็อกแถว/ตรวจซ้ำฝั่งเซิร์ฟเวอร์ เพื่อป้องกันผู้ใช้สองคนจองพร้อมกัน
+เพิ่ม foreign key ไปยังสามตารางที่อ้างถึง และ index `(shop_id, status)`, `(event_id, booth_id, status)` สำหรับตรวจรายการและสถานะ ห้ามมีการจอง `pending` หรือ `confirmed` ซ้ำสำหรับแผงเดียวกันในรอบเดียวกัน การตรวจและสร้างการจองต้องทำใน transaction พร้อมล็อกแถว/ตรวจซ้ำฝั่งเซิร์ฟเวอร์ เพื่อป้องกันผู้ใช้สองคนจองพร้อมกัน และมีคอลัมน์ generated `active_slot` (= `event_id:booth_id` เฉพาะสถานะ pending/confirmed) พร้อม unique key เป็นด่านสุดท้ายระดับฐานข้อมูล
 
 ### ความสัมพันธ์หลัก
 
@@ -301,7 +324,8 @@
 - `/auth/register` และ `/auth/login` จำกัดอัตราการเรียก และตอบข้อความทั่วไปเมื่อข้อมูลล็อกอินไม่ถูกต้อง
 - ทุก endpoint ที่เป็นข้อมูลส่วนตัวต้องตรวจ token และตรวจความเป็นเจ้าของข้อมูลฝั่งเซิร์ฟเวอร์จาก `user_id`/`shop_id`; ห้ามเชื่อ ID เจ้าของที่ client ส่งมา
 - Customer อ่านข้อมูลตลาดและร้านสาธารณะได้โดยไม่ต้องล็อกอิน; endpoint สาธารณะคืน `contact_phone` ของร้าน เพราะตกลงให้เปิดเผยเบอร์ติดต่อ แต่ต้องไม่คืนเบอร์บัญชีผู้ใช้หรือข้อมูลส่วนตัวอื่น
-- Admin API ไม่อยู่ในเวอร์ชันนี้และยังไม่สร้าง endpoint สำหรับ Admin
+- Admin API อยู่ใต้ `/api/v1/admin/...` ตรวจ token และ `role = 'admin'` ฝั่งเซิร์ฟเวอร์ทุกครั้ง (ไม่ใช่ admin ได้ `403 FORBIDDEN`)
+- เว็บเก็บ session เป็น cookie `HttpOnly; SameSite=Strict; Path=/api` (+`Secure` บน HTTPS) และยังรับ `Authorization: Bearer`; คำขอเปลี่ยนข้อมูลที่ใช้ cookie ต้องมี `Origin`/`Referer` เป็นโดเมนเดียวกัน
 
 ## รายการ API เวอร์ชันปัจจุบัน
 
@@ -375,7 +399,20 @@
 - ห้ามเปิดเผย `shop_id` หรือข้อมูลผู้จองจาก endpoint นี้
 - หมายเหตุ: ค่า `availability` สำหรับ `eventId` คำนวณจาก `bookings` สถานะ `pending`/`confirmed` รวมกับสถานะแผง ไม่ใช้ `booths.status` เพียงอย่างเดียว
 
+#### `GET /api/v1/markets/:marketId/booths/:boothId/events` — สถานะแผงเดียวในทุกรอบที่จะถึง
+
+- สิทธิ์: สาธารณะ; ใช้ในหน้ายืนยันการจองหลายรอบ
+- Response: `{ "data": { "booth": { id, boothCode, mapX, mapY, width, depth, price, status }, "events": [ { id, eventName, eventDate, openTime, closeTime, status, bookable, availability } ] } }` — เฉพาะรอบที่ไม่ถูกยกเลิกและวันที่ ≥ วันนี้; ไม่เปิดเผยผู้จอง
+- ข้อผิดพลาด: `400 INVALID_ID`, `404 MARKET_NOT_FOUND`, `404 BOOTH_NOT_FOUND`
+
 ### C. การจองของ Shop
+
+#### `POST /api/v1/bookings/batch` — จองแผงเดียวหลายรอบ
+
+- สิทธิ์: Shop ที่ล็อกอิน; Request `{ "boothId": 58, "eventIds": [31, 32, 33] }` (1–12 รอบ ไม่ซ้ำ; ไม่รับฟิลด์อื่น)
+- การทำงาน: ใช้กติกาเดียวกับ `POST /bookings` ทีละรอบ แต่ละรอบเป็น transaction ของตัวเอง รอบที่ไม่ว่างไม่ทำให้รอบอื่นล้ม
+- Response `201`: `{ "data": { "created": [ <booking แบบเดียวกับ POST /bookings> ], "failed": [ { eventId, code, message } ] } }`
+- ข้อผิดพลาด: `400 VALIDATION_ERROR`, `409 NO_BOOKING_CREATED` (ไม่มีรอบใดสำเร็จ; `fields` ระบุเหตุผลรายรอบ)
 
 #### `POST /api/v1/bookings` — ส่งคำขอจองแผง
 
@@ -428,12 +465,21 @@
 #### `PATCH /api/v1/shop/profile` — แก้ไขข้อมูลร้าน
 
 - สิทธิ์: Shop ที่ล็อกอิน
-- Request รับเฉพาะฟิลด์ที่อนุญาต เช่น `{ "shopName": "ร้านผักสด", "category": "ผักและผลไม้", "description": "ผักตามฤดูกาล", "contactPhone": "0812345678" }`
+- Request รับเฉพาะฟิลด์ที่อนุญาต: `shopName`, `category`, `description`, `contactName`, `contactPhone`, `socialUrl` เช่น `{ "shopName": "ร้านผักสด", "category": "ผักและผลไม้", "description": "ผักตามฤดูกาล", "contactName": "สมศรี", "contactPhone": "0812345678", "socialUrl": "https://facebook.com/..." }`
 - กติกา: ทุกฟิลด์เป็น optional แต่ต้องมีอย่างน้อยหนึ่งฟิลด์; ตรวจความยาวและรูปแบบ; ห้ามแก้ `userId`, `id`, `createdAt`
 - Response `200 OK`: ข้อมูลร้านที่บันทึกแล้ว
 - ข้อผิดพลาด: `400 VALIDATION_ERROR`, `401 UNAUTHORIZED`
 
+#### `POST /api/v1/shop/profile/image` และ `DELETE /api/v1/shop/profile/image` — รูปหน้าร้าน
+
+- สิทธิ์: Shop ที่ล็อกอิน; POST รับ `{ "image": "data:image/jpeg;base64,..." }` (body สูงสุด 3 MB เฉพาะ route นี้)
+- ตรวจชนิดไฟล์จาก byte จริง (JPEG/PNG/WEBP เท่านั้น ห้าม SVG) ขนาดหลังถอดรหัส ≤ 2 MB; บันทึกเป็น `public/images/shops/shop-<shopId>-<สุ่ม>.<ext>` และตั้ง `image_url`
+- DELETE ล้าง `image_url` (ไฟล์เดิมไม่ถูกลบจากดิสก์); ทั้งสองตอบข้อมูลโปรไฟล์ล่าสุด
+- ข้อผิดพลาด: `400 VALIDATION_ERROR` (`fields.image`), `401`, `413`
+
 ### E. ข้อมูลสาธารณะสำหรับ Customer และ QR Code
+
+> ข้อมูลร้านสาธารณะทุก endpoint มี `imageUrl` และ `socialUrl` เพิ่ม แต่ไม่มี `contactName`
 
 #### `GET /api/v1/public/markets/:marketId/map` — ข้อมูลตลาดและผังสำหรับหน้า QR
 
@@ -496,6 +542,26 @@
 - Response: ข้อมูลร้านที่เผยแพร่ได้ พร้อมตลาด/รอบ/หมายเลขแผงและพิกัด เมื่อมีการจองยืนยันในรอบนั้น
 - ข้อผิดพลาด: `404 SHOP_NOT_FOUND` หากร้านไม่มีข้อมูลสาธารณะหรือไม่เข้าร่วมรอบที่ระบุ
 
+### F. ผู้ดูแลตลาด (Admin) — ต้องล็อกอินและมี `role = 'admin'`
+
+| Method และ Path | การทำงาน |
+|---|---|
+| `GET /api/v1/admin/overview` | สรุป: ร้านทั้งหมด/ใช้งาน, จำนวนรอบที่จะถึงและวันสุดท้าย, รอบถัดไปพร้อม `bookedCount`, `revenue`, `boothUsable` |
+| `GET /api/v1/admin/markets` | ตลาดทั้งหมด รวม `isActive` |
+| `PATCH /api/v1/admin/markets/:marketId` | แก้ `marketName`, `address`, `openTime`, `closeTime` (HH:MM), `description`, `isActive` |
+| `GET /api/v1/admin/markets/:marketId/events` | รอบทั้งหมดรวมที่งด; query `fromDate`, `toDate`, `status`, `order`, `page`, `limit`; มี `bookedCount`, `revenue`, `ownOpenTime`, `ownCloseTime` |
+| `POST /api/v1/admin/markets/:marketId/events` | `{ eventName, eventDate, openTime?, closeTime?, status?, repeatWeeks? (1–26) }` สร้างรอบทุก 7 วัน ข้ามวันที่มีรอบอยู่แล้ว; ตอบ `{ created, skippedDates }` (`201` เมื่อสร้างได้อย่างน้อย 1 รอบ) |
+| `PATCH /api/v1/admin/events/:eventId` | แก้ชื่อ/วันที่/เวลา/สถานะ; เปลี่ยนเป็น `cancelled` จะยกเลิกการจองที่ยังใช้งานของรอบนั้นใน transaction เดียว และตอบ `cancelledBookings` |
+| `GET /api/v1/admin/markets/:marketId/booths` | แผงทั้งหมดพร้อม `status` จริง |
+| `POST /api/v1/admin/markets/:marketId/booths` | `{ boothCode, price, width?, depth?, mapX?, mapY? (0–100), status? }`; รหัสซ้ำ `409 BOOTH_CODE_EXISTS` |
+| `PATCH /api/v1/admin/booths/:boothId` | แก้ฟิลด์เดียวกันบางส่วน |
+| `GET /api/v1/admin/bookings` | query `eventId`, `status`, `q` (ชื่อร้าน/แผง/อีเมล), `page`, `limit`; มีข้อมูลติดต่อร้าน (`contactName`, `contactPhone`, `email`) |
+| `POST /api/v1/admin/bookings/:bookingId/status` | `{ status }`: `pending→confirmed/rejected/cancelled`, `confirmed→rejected/cancelled`; อื่น ๆ `409 INVALID_STATUS_CHANGE` |
+| `GET /api/v1/admin/shops` | query `q`, `status` (`active`/`disabled`), `page`, `limit`; มี `upcomingBookings`, `totalBookings` |
+| `PATCH /api/v1/admin/shops/:shopId` | `{ isActive }`; ปิดใช้งานแล้ว session ของร้านถูกเพิกถอนทันที; ปิดบัญชีตัวเองไม่ได้ (`422 CANNOT_DISABLE_SELF`) |
+
+ไม่มี endpoint ลบข้อมูล ใช้การเปลี่ยนสถานะแทนตามแนวทางเดิม; การกระทำของ admin บันทึก audit log (มีเฉพาะ ID)
+
 ### รหัสสถานะ HTTP และ Error code
 
 - `200 OK`: อ่านหรือแก้ไขข้อมูลสำเร็จ
@@ -528,7 +594,10 @@
 - รายการ/รายละเอียด/ยกเลิกการจอง: `GET /bookings`, `GET /bookings/:bookingId`, `POST /bookings/:bookingId/cancel`
 - โปรไฟล์ Shop: `GET /shop/profile`, `PATCH /shop/profile`
 - หน้า QR, ผัง, ค้นหาร้าน และรายละเอียดร้าน: `/public/markets/:marketId/map`, `/public/markets/:marketId/shops`, `/public/shops/:shopId`
-- Admin: ยังไม่มี endpoint ในเวอร์ชันปัจจุบัน
+- เลือกหลายรอบในหน้ายืนยัน: `GET /markets/:marketId/booths/:boothId/events`, `POST /bookings` (1 รอบ) หรือ `POST /bookings/batch` (หลายรอบ)
+- รูปร้าน: `POST`/`DELETE /shop/profile/image`
+- ร้านที่อยากแวะ: ไม่ใช้ API เก็บใน `localStorage` ของเบราว์เซอร์ (`tln-plan-<marketId>`)
+- Admin: `/admin/...` ตามตาราง F
 
 ## เป้าหมายหลัก
 

@@ -2,6 +2,8 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcryptjs");
 const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const app = express();
 app.disable("x-powered-by");
@@ -10,6 +12,8 @@ app.use((req, res, next) => {
   next();
 });
 app.use(express.static("public"));
+// Shop photos arrive as base64 JSON, so only that route gets a larger body limit.
+app.use("/api/v1/shop/profile/image", express.json({ limit: "3mb" }));
 app.use("/api", express.json({ limit: "16kb" }));
 
 const database = mysql.createPool({
@@ -40,13 +44,21 @@ const PHONE_PATTERN = /^\+?\d{9,15}$/;
 const MARKET_FIELDS = "id, market_name AS marketName, address, open_time AS openTime, close_time AS closeTime, description";
 const EVENT_SELECT = "SELECT e.id, e.market_id AS marketId, e.event_name AS eventName, e.event_date AS eventDate, COALESCE(e.open_time, m.open_time) AS openTime, COALESCE(e.close_time, m.close_time) AS closeTime, e.status FROM market_events e JOIN markets m ON m.id = e.market_id";
 const BOOKING_SELECT = "SELECT bk.id, bk.status, bk.price_at_booking AS price, bk.booked_at AS bookedAt, bk.cancelled_at AS cancelledAt, m.id AS marketId, m.market_name AS marketName, m.address AS marketAddress, e.id AS eventId, e.event_name AS eventName, e.event_date AS eventDate, COALESCE(e.open_time, m.open_time) AS openTime, COALESCE(e.close_time, m.close_time) AS closeTime, e.status AS eventStatus, b.id AS boothId, b.booth_code AS boothCode, b.width, b.depth, b.map_x AS mapX, b.map_y AS mapY FROM bookings bk JOIN market_events e ON e.id = bk.event_id JOIN markets m ON m.id = e.market_id JOIN booths b ON b.id = bk.booth_id";
-const PROFILE_SELECT = "SELECT s.id, s.shop_name AS shopName, s.category, s.description, s.contact_phone AS contactPhone, s.updated_at AS updatedAt, u.email, u.phone FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.user_id = ?";
+const PROFILE_SELECT = "SELECT s.id, s.shop_name AS shopName, s.category, s.description, s.contact_name AS contactName, s.contact_phone AS contactPhone, s.social_url AS socialUrl, s.image_url AS imageUrl, s.updated_at AS updatedAt, u.email, u.phone FROM shops s JOIN users u ON u.id = s.user_id WHERE s.id = ? AND s.user_id = ?";
 const PROFILE_RULES = {
   shopName: { column: "shop_name", max: 150, required: true },
   category: { column: "category", max: 100 },
   description: { column: "description", max: 1000 },
-  contactPhone: { column: "contact_phone", max: 20, phone: true }
+  contactName: { column: "contact_name", max: 100 },
+  contactPhone: { column: "contact_phone", max: 20, phone: true },
+  socialUrl: { column: "social_url", max: 255, url: true }
 };
+const SHOP_IMAGE_DIR = path.resolve("public", "images", "shops");
+const IMAGE_TYPES = [
+  { ext: "jpg", test: buffer => buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff },
+  { ext: "png", test: buffer => buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) },
+  { ext: "webp", test: buffer => buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP" }
+];
 const sessions = new Map();
 const rateBuckets = new Map();
 // Compared against when the email does not exist, so failed logins take similar time.
@@ -92,7 +104,10 @@ function bookingOut(row) {
   };
 }
 function profileOut(row) {
-  return { id: row.id, shopName: row.shopName, category: row.category, description: row.description, contactPhone: row.contactPhone, updatedAt: row.updatedAt, account: { email: row.email, phone: row.phone } };
+  return { id: row.id, shopName: row.shopName, category: row.category, description: row.description, contactName: row.contactName, contactPhone: row.contactPhone, socialUrl: row.socialUrl, imageUrl: row.imageUrl, updatedAt: row.updatedAt, account: { email: row.email, phone: row.phone } };
+}
+function isHttpUrl(value) {
+  try { return ["http:", "https:"].includes(new URL(value).protocol); } catch { return false; }
 }
 function readCookie(req, name) {
   for (const part of (req.get("cookie") || "").split(";")) {
@@ -168,13 +183,22 @@ async function auth(req, res, next) {
   // Cookie sessions are sent automatically by the browser, so state-changing requests must come from this site.
   if (!bearer && !["GET", "HEAD"].includes(req.method) && !sameOrigin(req)) return fail(res, 403, "FORBIDDEN", "คำขอนี้ไม่ได้มาจากหน้าเว็บของระบบ");
   try {
-    const [rows] = await database.execute("SELECT u.is_active, s.id AS shopId FROM users u JOIN shops s ON s.user_id = u.id WHERE u.id = ? LIMIT 1", [session.userId]);
+    const [rows] = await database.execute("SELECT u.is_active, u.role, s.id AS shopId FROM users u LEFT JOIN shops s ON s.user_id = u.id WHERE u.id = ? LIMIT 1", [session.userId]);
     if (!rows.length) { sessions.delete(token); return fail(res, 401, "UNAUTHORIZED", "กรุณาเข้าสู่ระบบใหม่"); }
     if (!rows[0].is_active) { sessions.delete(token); return fail(res, 403, "ACCOUNT_DISABLED", "บัญชีนี้ถูกปิดใช้งาน"); }
-    req.user = { userId: session.userId, shopId: rows[0].shopId };
+    req.user = { userId: session.userId, shopId: rows[0].shopId, role: rows[0].role };
     req.token = token;
     next();
   } catch (error) { serverError(res, "Auth check", error, "ไม่สามารถตรวจสอบการเข้าสู่ระบบได้ในขณะนี้"); }
+}
+
+function requireShop(req, res, next) {
+  if (!req.user.shopId) return fail(res, 403, "FORBIDDEN", "บัญชีนี้ไม่มีร้านค้า");
+  next();
+}
+function requireAdmin(req, res, next) {
+  if (req.user.role !== "admin") return fail(res, 403, "FORBIDDEN", "เฉพาะผู้ดูแลตลาดเท่านั้น");
+  next();
 }
 
 async function findActiveMarket(marketId) {
@@ -248,14 +272,14 @@ app.post(`${API}/auth/login`, rateLimit("login", 10, 15 * 60 * 1000), async (req
   if (!password) fields.password = "กรุณากรอกรหัสผ่าน";
   if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "กรุณากรอกอีเมลและรหัสผ่าน", fields);
   try {
-    const [rows] = await database.execute("SELECT u.id, u.password_hash, u.is_active, s.id AS shopId, s.shop_name AS shopName FROM users u JOIN shops s ON s.user_id = u.id WHERE u.email = ? LIMIT 1", [email]);
+    const [rows] = await database.execute("SELECT u.id, u.password_hash, u.is_active, u.role, s.id AS shopId, s.shop_name AS shopName FROM users u LEFT JOIN shops s ON s.user_id = u.id WHERE u.email = ? LIMIT 1", [email]);
     const user = rows[0];
     const valid = await bcrypt.compare(password, user ? user.password_hash : DUMMY_HASH);
     if (!user || !valid) { audit("auth.login_failed", { userId: user?.id || null }); return fail(res, 401, "INVALID_CREDENTIALS", "อีเมลหรือรหัสผ่านไม่ถูกต้อง"); }
     if (!user.is_active) return fail(res, 403, "ACCOUNT_DISABLED", "บัญชีนี้ถูกปิดใช้งาน กรุณาติดต่อผู้ดูแลตลาด");
     const token = createSession(req, res, user.id, user.shopId);
     audit("auth.login", { userId: user.id });
-    res.json({ data: { user: { id: user.id }, shop: { id: user.shopId, shopName: user.shopName }, accessToken: token } });
+    res.json({ data: { user: { id: user.id, role: user.role }, shop: user.shopId ? { id: user.shopId, shopName: user.shopName } : null, accessToken: token } });
   } catch (error) { serverError(res, "Login", error, "ไม่สามารถเข้าสู่ระบบได้ในขณะนี้"); }
 });
 
@@ -268,10 +292,12 @@ app.post(`${API}/auth/logout`, auth, (req, res) => {
 
 app.get(`${API}/auth/me`, auth, async (req, res) => {
   try {
-    const [rows] = await database.execute(PROFILE_SELECT, [req.user.shopId, req.user.userId]);
-    if (!rows.length) return fail(res, 401, "UNAUTHORIZED", "กรุณาเข้าสู่ระบบใหม่");
-    const row = rows[0];
-    res.json({ data: { user: { id: req.user.userId, email: row.email, phone: row.phone }, shop: { id: row.id, shopName: row.shopName, category: row.category, description: row.description, contactPhone: row.contactPhone } } });
+    const [users] = await database.execute("SELECT email, phone, role FROM users WHERE id = ?", [req.user.userId]);
+    if (!users.length) return fail(res, 401, "UNAUTHORIZED", "กรุณาเข้าสู่ระบบใหม่");
+    const [shops] = req.user.shopId ? await database.execute(PROFILE_SELECT, [req.user.shopId, req.user.userId]) : [[]];
+    const shop = shops[0] ? profileOut(shops[0]) : null;
+    if (shop) delete shop.account;
+    res.json({ data: { user: { id: req.user.userId, email: users[0].email, phone: users[0].phone, role: users[0].role }, shop } });
   } catch (error) { serverError(res, "Read account", error, "ไม่สามารถอ่านข้อมูลบัญชีได้"); }
 });
 
@@ -335,43 +361,87 @@ app.get(`${API}/markets/:marketId/booths`, publicCache(0), validatePage, async (
   } catch (error) { serverError(res, "List booths", error, "ไม่สามารถโหลดแผงตลาดได้"); }
 });
 
+app.get(`${API}/markets/:marketId/booths/:boothId/events`, publicCache(0), async (req, res) => {
+  const marketId = toId(req.params.marketId);
+  const boothId = toId(req.params.boothId);
+  if (!marketId || !boothId) return fail(res, 400, "INVALID_ID", "รหัสตลาดหรือรหัสแผงไม่ถูกต้อง");
+  try {
+    if (!(await findActiveMarket(marketId))) return fail(res, 404, "MARKET_NOT_FOUND", "ไม่พบตลาดนี้");
+    const [booths] = await database.execute("SELECT id, booth_code AS boothCode, map_x AS mapX, map_y AS mapY, width, depth, base_price AS price, status FROM booths WHERE id = ? AND market_id = ?", [boothId, marketId]);
+    if (!booths.length) return fail(res, 404, "BOOTH_NOT_FOUND", "ไม่พบแผงนี้ในตลาด");
+    // Same availability rule as the booth list, evaluated for every upcoming round; never exposes who booked.
+    const [events] = await database.execute("SELECT e.id, e.market_id AS marketId, e.event_name AS eventName, e.event_date AS eventDate, COALESCE(e.open_time, m.open_time) AS openTime, COALESCE(e.close_time, m.close_time) AS closeTime, e.status, CASE WHEN b.status = 'maintenance' THEN 'maintenance' WHEN b.status <> 'available' THEN 'unavailable' WHEN EXISTS (SELECT 1 FROM bookings x WHERE x.booth_id = b.id AND x.event_id = e.id AND x.status IN ('pending','confirmed')) THEN 'booked' ELSE 'available' END AS availability FROM market_events e JOIN markets m ON m.id = e.market_id JOIN booths b ON b.id = ? AND b.market_id = e.market_id WHERE e.market_id = ? AND e.status <> 'cancelled' AND e.event_date >= ? ORDER BY e.event_date LIMIT 100", [boothId, marketId, todayInMarket()]);
+    res.json({ data: { booth: booths[0], events: events.map(withBookable) } });
+  } catch (error) { serverError(res, "Booth rounds", error, "ไม่สามารถโหลดสถานะแผงได้"); }
+});
+
 // ---------- C. Shop bookings ----------
-app.post(`${API}/bookings`, auth, async (req, res) => {
-  const body = isPlainObject(req.body) ? req.body : {};
-  const fields = {};
-  for (const key of Object.keys(body)) if (!["eventId", "boothId"].includes(key)) fields[key] = "ไม่รับข้อมูลนี้ ระบบกำหนดให้เอง";
-  if (!isJsonId(body.eventId)) fields.eventId = "กรุณาเลือกรอบตลาด";
-  if (!isJsonId(body.boothId)) fields.boothId = "กรุณาเลือกแผง";
-  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลการจองไม่ถูกต้อง", fields);
+// Creates one confirmed booking in its own transaction. Returns { booking } or { status, code, message }.
+async function bookBooth(shopId, eventId, boothId) {
   let connection;
   try {
     connection = await database.getConnection();
     await connection.beginTransaction();
-    const reject = async (status, code, message) => { await connection.rollback(); return fail(res, status, code, message); };
-    const [events] = await connection.execute("SELECT e.id, e.market_id, e.event_date, e.status, m.is_active FROM market_events e JOIN markets m ON m.id = e.market_id WHERE e.id = ? LOCK IN SHARE MODE", [body.eventId]);
+    const reject = async (status, code, message) => { await connection.rollback(); return { status, code, message }; };
+    const [events] = await connection.execute("SELECT e.id, e.market_id, e.event_date, e.status, m.is_active FROM market_events e JOIN markets m ON m.id = e.market_id WHERE e.id = ? LOCK IN SHARE MODE", [eventId]);
     // Locking the booth row serialises concurrent bookings of the same booth.
-    const [booths] = await connection.execute("SELECT id, market_id, booth_code, base_price, status FROM booths WHERE id = ? FOR UPDATE", [body.boothId]);
+    const [booths] = await connection.execute("SELECT id, market_id, booth_code, base_price, status FROM booths WHERE id = ? FOR UPDATE", [boothId]);
     const event = events[0];
     const booth = booths[0];
     if (!event || !booth || !event.is_active || event.market_id !== booth.market_id) return reject(404, "EVENT_OR_BOOTH_NOT_FOUND", "ไม่พบรอบตลาดหรือแผงที่เลือก");
     if (!BOOKABLE_EVENT_STATUSES.includes(event.status) || event.event_date < todayInMarket()) return reject(422, "EVENT_NOT_BOOKABLE", "รอบตลาดนี้ไม่เปิดรับจองแล้ว กรุณาเลือกรอบอื่น");
     if (booth.status !== "available") return reject(409, "BOOTH_UNAVAILABLE", "แผงนี้ไม่พร้อมให้จอง กรุณาเลือกแผงอื่น");
     const [active] = await connection.execute("SELECT id, shop_id FROM bookings WHERE event_id = ? AND booth_id = ? AND status IN ('pending','confirmed') FOR UPDATE", [event.id, booth.id]);
-    if (active.some(row => row.shop_id === req.user.shopId)) return reject(409, "DUPLICATE_BOOKING", "ร้านของคุณจองแผงนี้ในรอบนี้ไว้แล้ว");
+    if (active.some(row => row.shop_id === shopId)) return reject(409, "DUPLICATE_BOOKING", "ร้านของคุณจองแผงนี้ในรอบนี้ไว้แล้ว");
     if (active.length) return reject(409, "BOOTH_UNAVAILABLE", "แผงนี้ถูกจองแล้ว กรุณาเลือกแผงอื่น");
     const now = nowSeconds();
-    const [insert] = await connection.execute("INSERT INTO bookings (event_id, booth_id, shop_id, status, price_at_booking, booked_at, created_at, updated_at) VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?)", [event.id, booth.id, req.user.shopId, booth.base_price, now, now, now]);
+    const [insert] = await connection.execute("INSERT INTO bookings (event_id, booth_id, shop_id, status, price_at_booking, booked_at, created_at, updated_at) VALUES (?, ?, ?, 'confirmed', ?, ?, ?, ?)", [event.id, booth.id, shopId, booth.base_price, now, now, now]);
     await connection.commit();
-    audit("booking.created", { bookingId: insert.insertId, shopId: req.user.shopId, eventId: event.id, boothId: booth.id });
-    res.status(201).json({ data: { id: insert.insertId, event: { id: event.id, eventDate: event.event_date }, booth: { id: booth.id, boothCode: booth.booth_code }, status: "confirmed", price: booth.base_price, bookedAt: now.toISOString() } });
+    audit("booking.created", { bookingId: insert.insertId, shopId, eventId: event.id, boothId: booth.id });
+    return { booking: { id: insert.insertId, event: { id: event.id, eventDate: event.event_date }, booth: { id: booth.id, boothCode: booth.booth_code }, status: "confirmed", price: booth.base_price, bookedAt: now.toISOString() } };
   } catch (error) {
     if (connection) await connection.rollback().catch(() => {});
-    if (["ER_DUP_ENTRY", "ER_LOCK_DEADLOCK", "ER_LOCK_WAIT_TIMEOUT"].includes(error.code)) return fail(res, 409, "BOOTH_UNAVAILABLE", "แผงนี้ถูกจองแล้ว กรุณาเลือกแผงอื่น");
-    serverError(res, "Booking", error, "ไม่สามารถจองแผงได้ในขณะนี้");
+    if (["ER_DUP_ENTRY", "ER_LOCK_DEADLOCK", "ER_LOCK_WAIT_TIMEOUT"].includes(error.code)) return { status: 409, code: "BOOTH_UNAVAILABLE", message: "แผงนี้ถูกจองแล้ว กรุณาเลือกแผงอื่น" };
+    throw error;
   } finally { connection?.release(); }
+}
+
+app.post(`${API}/bookings`, auth, requireShop, async (req, res) => {
+  const body = isPlainObject(req.body) ? req.body : {};
+  const fields = {};
+  for (const key of Object.keys(body)) if (!["eventId", "boothId"].includes(key)) fields[key] = "ไม่รับข้อมูลนี้ ระบบกำหนดให้เอง";
+  if (!isJsonId(body.eventId)) fields.eventId = "กรุณาเลือกรอบตลาด";
+  if (!isJsonId(body.boothId)) fields.boothId = "กรุณาเลือกแผง";
+  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลการจองไม่ถูกต้อง", fields);
+  try {
+    const result = await bookBooth(req.user.shopId, body.eventId, body.boothId);
+    if (!result.booking) return fail(res, result.status, result.code, result.message);
+    res.status(201).json({ data: result.booking });
+  } catch (error) { serverError(res, "Booking", error, "ไม่สามารถจองแผงได้ในขณะนี้"); }
 });
 
-app.get(`${API}/bookings`, auth, validatePage, async (req, res) => {
+// Books one booth for several rounds. Each round is its own transaction, so a taken round does not block the others.
+app.post(`${API}/bookings/batch`, auth, requireShop, async (req, res) => {
+  const body = isPlainObject(req.body) ? req.body : {};
+  const fields = {};
+  for (const key of Object.keys(body)) if (!["eventIds", "boothId"].includes(key)) fields[key] = "ไม่รับข้อมูลนี้ ระบบกำหนดให้เอง";
+  if (!isJsonId(body.boothId)) fields.boothId = "กรุณาเลือกแผง";
+  if (!Array.isArray(body.eventIds) || !body.eventIds.length || body.eventIds.length > 12 || !body.eventIds.every(isJsonId) || new Set(body.eventIds).size !== body.eventIds.length) fields.eventIds = "เลือกรอบตลาดได้ 1–12 รอบ ไม่ซ้ำกัน";
+  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลการจองไม่ถูกต้อง", fields);
+  try {
+    const created = [];
+    const failed = [];
+    for (const eventId of body.eventIds) {
+      const result = await bookBooth(req.user.shopId, eventId, body.boothId);
+      if (result.booking) created.push(result.booking);
+      else failed.push({ eventId, code: result.code, message: result.message });
+    }
+    if (!created.length) return fail(res, 409, "NO_BOOKING_CREATED", "ไม่สามารถจองรอบที่เลือกได้เลย", Object.fromEntries(failed.map(item => [String(item.eventId), item.message])));
+    res.status(201).json({ data: { created, failed } });
+  } catch (error) { serverError(res, "Batch booking", error, "ไม่สามารถจองแผงได้ในขณะนี้"); }
+});
+
+app.get(`${API}/bookings`, auth, requireShop, validatePage, async (req, res) => {
   const query = readQuery(req, res, { status: BOOKING_STATUSES, fromDate: "date", toDate: "date", sort: ["eventDate", "bookedAt"], order: ["asc", "desc"] });
   if (!query) return;
   try {
@@ -385,7 +455,7 @@ app.get(`${API}/bookings`, auth, validatePage, async (req, res) => {
   } catch (error) { serverError(res, "List bookings", error, "ไม่สามารถโหลดรายการจองได้"); }
 });
 
-app.get(`${API}/bookings/:bookingId`, auth, async (req, res) => {
+app.get(`${API}/bookings/:bookingId`, auth, requireShop, async (req, res) => {
   const bookingId = toId(req.params.bookingId);
   if (!bookingId) return fail(res, 404, "BOOKING_NOT_FOUND", "ไม่พบรายการจอง");
   try {
@@ -395,7 +465,7 @@ app.get(`${API}/bookings/:bookingId`, auth, async (req, res) => {
   } catch (error) { serverError(res, "Read booking", error, "ไม่สามารถโหลดรายการจองได้"); }
 });
 
-app.post(`${API}/bookings/:bookingId/cancel`, auth, async (req, res) => {
+app.post(`${API}/bookings/:bookingId/cancel`, auth, requireShop, async (req, res) => {
   const bookingId = toId(req.params.bookingId);
   if (!bookingId) return fail(res, 404, "BOOKING_NOT_FOUND", "ไม่พบรายการจอง");
   const body = isPlainObject(req.body) ? req.body : {};
@@ -424,7 +494,7 @@ app.post(`${API}/bookings/:bookingId/cancel`, auth, async (req, res) => {
 });
 
 // ---------- D. Shop profile ----------
-app.get(`${API}/shop/profile`, auth, async (req, res) => {
+app.get(`${API}/shop/profile`, auth, requireShop, async (req, res) => {
   try {
     const [rows] = await database.execute(PROFILE_SELECT, [req.user.shopId, req.user.userId]);
     if (!rows.length) return fail(res, 404, "SHOP_NOT_FOUND", "ไม่พบข้อมูลร้าน");
@@ -432,7 +502,7 @@ app.get(`${API}/shop/profile`, auth, async (req, res) => {
   } catch (error) { serverError(res, "Read profile", error, "ไม่สามารถโหลดข้อมูลร้านได้"); }
 });
 
-app.patch(`${API}/shop/profile`, auth, async (req, res) => {
+app.patch(`${API}/shop/profile`, auth, requireShop, async (req, res) => {
   if (!isPlainObject(req.body) || !Object.keys(req.body).length) return fail(res, 400, "VALIDATION_ERROR", "กรุณาส่งข้อมูลที่ต้องการแก้ไขอย่างน้อยหนึ่งรายการ");
   const fields = {};
   const updates = [];
@@ -445,6 +515,7 @@ app.patch(`${API}/shop/profile`, auth, async (req, res) => {
     if (rule.required && !value) fields[key] = "กรุณากรอกชื่อร้าน";
     else if (value.length > rule.max) fields[key] = `ยาวได้ไม่เกิน ${rule.max} ตัวอักษร`;
     else if (rule.phone && value && !PHONE_PATTERN.test(value)) fields[key] = "รูปแบบเบอร์โทรศัพท์ไม่ถูกต้อง (ตัวเลข 9-15 หลัก)";
+    else if (rule.url && value && !isHttpUrl(value)) fields[key] = "ลิงก์ต้องขึ้นต้นด้วย https:// หรือ http://";
     else { updates.push(`${rule.column} = ?`); values.push(value || null); }
   }
   if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลที่ส่งมาไม่ถูกต้อง", fields);
@@ -470,8 +541,8 @@ app.get(`${API}/public/markets/:marketId/map`, publicCache(0), async (req, res) 
     if (query.eventId && !event) return fail(res, 404, "EVENT_NOT_FOUND", "ไม่พบรอบตลาดนี้");
     const eventId = event?.id || null;
     // Only confirmed bookings publish shop details; account email/phone are never selected.
-    const [rows] = await database.execute("SELECT b.id, b.booth_code AS boothCode, b.map_x AS mapX, b.map_y AS mapY, b.width, b.depth, CASE WHEN bk.id IS NOT NULL THEN 'occupied' WHEN b.status = 'maintenance' THEN 'maintenance' WHEN b.status <> 'available' THEN 'unavailable' WHEN EXISTS (SELECT 1 FROM bookings x WHERE x.booth_id = b.id AND x.event_id = ? AND x.status = 'pending') THEN 'occupied' ELSE 'available' END AS availability, s.id AS shopId, s.shop_name AS shopName, s.category, s.description AS shopDescription, s.contact_phone AS contactPhone FROM booths b LEFT JOIN bookings bk ON bk.booth_id = b.id AND bk.event_id = ? AND bk.status = 'confirmed' LEFT JOIN shops s ON s.id = bk.shop_id WHERE b.market_id = ? ORDER BY b.booth_code", [eventId, eventId, marketId]);
-    const booths = rows.map(({ shopId, shopName, category, shopDescription, contactPhone, ...booth }) => ({ ...booth, shop: shopId ? { id: shopId, shopName, category, description: shopDescription, contactPhone } : null }));
+    const [rows] = await database.execute("SELECT b.id, b.booth_code AS boothCode, b.map_x AS mapX, b.map_y AS mapY, b.width, b.depth, CASE WHEN bk.id IS NOT NULL THEN 'occupied' WHEN b.status = 'maintenance' THEN 'maintenance' WHEN b.status <> 'available' THEN 'unavailable' WHEN EXISTS (SELECT 1 FROM bookings x WHERE x.booth_id = b.id AND x.event_id = ? AND x.status = 'pending') THEN 'occupied' ELSE 'available' END AS availability, s.id AS shopId, s.shop_name AS shopName, s.category, s.description AS shopDescription, s.contact_phone AS contactPhone, s.social_url AS socialUrl, s.image_url AS imageUrl FROM booths b LEFT JOIN bookings bk ON bk.booth_id = b.id AND bk.event_id = ? AND bk.status = 'confirmed' LEFT JOIN shops s ON s.id = bk.shop_id WHERE b.market_id = ? ORDER BY b.booth_code", [eventId, eventId, marketId]);
+    const booths = rows.map(({ shopId, shopName, category, shopDescription, contactPhone, socialUrl, imageUrl, ...booth }) => ({ ...booth, shop: shopId ? { id: shopId, shopName, category, description: shopDescription, contactPhone, socialUrl, imageUrl } : null }));
     res.json({ data: { market, event, mode: event ? "event" : "general", booths } });
   } catch (error) { serverError(res, "Public map", error, "ไม่สามารถโหลดแผนผังตลาดได้"); }
 });
@@ -494,7 +565,7 @@ app.get(`${API}/public/markets/:marketId/shops`, publicCache(0), validatePage, a
     const column = query.sort === "boothCode" ? "b.booth_code" : "s.shop_name";
     const order = query.order === "desc" ? "DESC" : "ASC";
     const [[{ total }]] = await database.execute(`SELECT COUNT(*) AS total ${from} ${where}`, params);
-    const [rows] = await database.execute(`SELECT s.id, s.shop_name AS shopName, s.category, s.description, s.contact_phone AS contactPhone, bk.event_id AS eventId, b.id AS boothId, b.booth_code AS boothCode, b.map_x AS mapX, b.map_y AS mapY ${from} ${where} ORDER BY ${column} ${order}, b.booth_code LIMIT ? OFFSET ?`, [...params, req.paging.limit, req.paging.offset]);
+    const [rows] = await database.execute(`SELECT s.id, s.shop_name AS shopName, s.category, s.description, s.contact_phone AS contactPhone, s.social_url AS socialUrl, s.image_url AS imageUrl, bk.event_id AS eventId, b.id AS boothId, b.booth_code AS boothCode, b.map_x AS mapX, b.map_y AS mapY ${from} ${where} ORDER BY ${column} ${order}, b.booth_code LIMIT ? OFFSET ?`, [...params, req.paging.limit, req.paging.offset]);
     sendList(res, rows, req.paging, total);
   } catch (error) { serverError(res, "Search shops", error, "ไม่สามารถค้นหาร้านค้าได้"); }
 });
@@ -506,16 +577,351 @@ app.get(`${API}/public/shops/:shopId`, publicCache(0), async (req, res) => {
   if (!query) return;
   try {
     const today = todayInMarket();
-    const [rows] = await database.execute(`SELECT s.id, s.shop_name AS shopName, s.category, s.description, s.contact_phone AS contactPhone, m.id AS marketId, m.market_name AS marketName, m.address, e.id AS eventId, e.event_name AS eventName, e.event_date AS eventDate, COALESCE(e.open_time, m.open_time) AS openTime, COALESCE(e.close_time, m.close_time) AS closeTime, b.id AS boothId, b.booth_code AS boothCode, b.map_x AS mapX, b.map_y AS mapY FROM bookings bk JOIN shops s ON s.id = bk.shop_id JOIN market_events e ON e.id = bk.event_id JOIN markets m ON m.id = e.market_id JOIN booths b ON b.id = bk.booth_id WHERE bk.shop_id = ? AND bk.status = 'confirmed' AND e.status <> 'cancelled' AND m.is_active = 1 AND (? IS NULL OR e.id = ?) ORDER BY e.event_date >= ? DESC, ABS(DATEDIFF(e.event_date, ?)) ASC, b.booth_code`, [shopId, query.eventId, query.eventId, today, today]);
+    const [rows] = await database.execute(`SELECT s.id, s.shop_name AS shopName, s.category, s.description, s.contact_phone AS contactPhone, s.social_url AS socialUrl, s.image_url AS imageUrl, m.id AS marketId, m.market_name AS marketName, m.address, e.id AS eventId, e.event_name AS eventName, e.event_date AS eventDate, COALESCE(e.open_time, m.open_time) AS openTime, COALESCE(e.close_time, m.close_time) AS closeTime, b.id AS boothId, b.booth_code AS boothCode, b.map_x AS mapX, b.map_y AS mapY FROM bookings bk JOIN shops s ON s.id = bk.shop_id JOIN market_events e ON e.id = bk.event_id JOIN markets m ON m.id = e.market_id JOIN booths b ON b.id = bk.booth_id WHERE bk.shop_id = ? AND bk.status = 'confirmed' AND e.status <> 'cancelled' AND m.is_active = 1 AND (? IS NULL OR e.id = ?) ORDER BY e.event_date >= ? DESC, ABS(DATEDIFF(e.event_date, ?)) ASC, b.booth_code`, [shopId, query.eventId, query.eventId, today, today]);
     if (!rows.length) return fail(res, 404, "SHOP_NOT_FOUND", query.eventId ? "ร้านนี้ไม่ได้เข้าร่วมรอบตลาดที่เลือก" : "ไม่พบข้อมูลร้านที่เผยแพร่");
     const first = rows[0];
     res.json({ data: {
-      id: first.id, shopName: first.shopName, category: first.category, description: first.description, contactPhone: first.contactPhone,
+      id: first.id, shopName: first.shopName, category: first.category, description: first.description, contactPhone: first.contactPhone, socialUrl: first.socialUrl, imageUrl: first.imageUrl,
       market: { id: first.marketId, marketName: first.marketName, address: first.address },
       event: { id: first.eventId, eventName: first.eventName, eventDate: first.eventDate, openTime: first.openTime, closeTime: first.closeTime },
       booths: rows.filter(row => row.eventId === first.eventId).map(row => ({ id: row.boothId, boothCode: row.boothCode, mapX: row.mapX, mapY: row.mapY }))
     } });
   } catch (error) { serverError(res, "Public shop", error, "ไม่สามารถโหลดข้อมูลร้านได้"); }
+});
+
+app.post(`${API}/shop/profile/image`, auth, requireShop, async (req, res) => {
+  const image = isPlainObject(req.body) && typeof req.body.image === "string" ? req.body.image : "";
+  const match = /^data:image\/(?:jpeg|png|webp);base64,([A-Za-z0-9+/]+=*)$/.exec(image);
+  const buffer = match ? Buffer.from(match[1], "base64") : null;
+  // Trust the file's own bytes, not the declared type.
+  const type = buffer && IMAGE_TYPES.find(item => item.test(buffer));
+  if (!type || buffer.length > 2 * 1024 * 1024) return fail(res, 400, "VALIDATION_ERROR", "รูปไม่ถูกต้อง", { image: "ใช้ไฟล์รูป JPG, PNG หรือ WEBP ขนาดไม่เกิน 2 MB" });
+  try {
+    const name = `shop-${req.user.shopId}-${crypto.randomBytes(8).toString("hex")}.${type.ext}`;
+    await fs.promises.writeFile(path.join(SHOP_IMAGE_DIR, name), buffer);
+    await database.execute("UPDATE shops SET image_url = ?, updated_at = ? WHERE id = ? AND user_id = ?", [`/images/shops/${name}`, nowSeconds(), req.user.shopId, req.user.userId]);
+    const [rows] = await database.execute(PROFILE_SELECT, [req.user.shopId, req.user.userId]);
+    audit("shop.image_updated", { shopId: req.user.shopId, bytes: buffer.length });
+    res.json({ data: profileOut(rows[0]) });
+  } catch (error) { serverError(res, "Upload shop image", error, "ไม่สามารถบันทึกรูปร้านได้"); }
+});
+
+app.delete(`${API}/shop/profile/image`, auth, requireShop, async (req, res) => {
+  try {
+    await database.execute("UPDATE shops SET image_url = NULL, updated_at = ? WHERE id = ? AND user_id = ?", [nowSeconds(), req.user.shopId, req.user.userId]);
+    const [rows] = await database.execute(PROFILE_SELECT, [req.user.shopId, req.user.userId]);
+    audit("shop.image_removed", { shopId: req.user.shopId });
+    res.json({ data: profileOut(rows[0]) });
+  } catch (error) { serverError(res, "Remove shop image", error, "ไม่สามารถลบรูปร้านได้"); }
+});
+
+// ---------- F. Market admin (role = 'admin') ----------
+const ADMIN_EVENT_STATUSES = ["scheduled", "open", "closed", "cancelled"];
+const BOOTH_STATUSES = ["available", "unavailable", "maintenance"];
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const MARKET_RULES = {
+  marketName: { column: "market_name", type: "text", max: 150, required: true },
+  address: { column: "address", type: "text", max: 500 },
+  openTime: { column: "open_time", type: "time" },
+  closeTime: { column: "close_time", type: "time" },
+  description: { column: "description", type: "text", max: 2000 },
+  isActive: { column: "is_active", type: "bool" }
+};
+const EVENT_RULES = {
+  eventName: { column: "event_name", type: "text", max: 150, required: true },
+  eventDate: { column: "event_date", type: "date", required: true },
+  openTime: { column: "open_time", type: "time" },
+  closeTime: { column: "close_time", type: "time" },
+  status: { column: "status", type: "enum", values: ADMIN_EVENT_STATUSES }
+};
+const BOOTH_RULES = {
+  boothCode: { column: "booth_code", type: "text", max: 30, required: true },
+  mapX: { column: "map_x", type: "number", min: 0, max: 100 },
+  mapY: { column: "map_y", type: "number", min: 0, max: 100 },
+  width: { column: "width", type: "number", min: 0.1, max: 100 },
+  depth: { column: "depth", type: "number", min: 0.1, max: 100 },
+  price: { column: "base_price", type: "number", min: 0, max: 99999999, required: true },
+  status: { column: "status", type: "enum", values: BOOTH_STATUSES }
+};
+const adminOnly = [auth, requireAdmin];
+
+// Validates an admin JSON body against rules; returns column → value for the accepted fields.
+function readBody(body, rules, partial, extraKeys = []) {
+  const values = {};
+  const fields = {};
+  if (!isPlainObject(body)) return { values, fields: { body: "ต้องส่งข้อมูลเป็น JSON" } };
+  for (const key of Object.keys(body)) if (!rules[key] && !extraKeys.includes(key)) fields[key] = "ไม่สามารถแก้ไขข้อมูลนี้ได้";
+  for (const [key, rule] of Object.entries(rules)) {
+    const raw = typeof body[key] === "string" ? body[key].trim() : body[key];
+    if (raw === undefined) { if (!partial && rule.required) fields[key] = "จำเป็นต้องกรอก"; continue; }
+    if (raw === null || raw === "") { if (rule.required) fields[key] = "จำเป็นต้องกรอก"; else values[rule.column] = null; continue; }
+    if (rule.type === "text") {
+      if (typeof raw !== "string") fields[key] = "ต้องเป็นข้อความ";
+      else if (raw.length > rule.max) fields[key] = `ยาวได้ไม่เกิน ${rule.max} ตัวอักษร`;
+      else values[rule.column] = raw;
+    } else if (rule.type === "time") {
+      if (typeof raw === "string" && TIME_PATTERN.test(raw)) values[rule.column] = raw.length === 5 ? `${raw}:00` : raw;
+      else fields[key] = "เวลาต้องอยู่ในรูปแบบ HH:MM";
+    } else if (rule.type === "date") {
+      if (typeof raw === "string" && isValidDate(raw)) values[rule.column] = raw;
+      else fields[key] = "วันที่ต้องอยู่ในรูปแบบ YYYY-MM-DD";
+    } else if (rule.type === "number") {
+      if (typeof raw === "number" && Number.isFinite(raw) && raw >= rule.min && raw <= rule.max) values[rule.column] = raw;
+      else fields[key] = `ต้องเป็นตัวเลข ${rule.min}–${rule.max}`;
+    } else if (rule.type === "enum") {
+      if (rule.values.includes(raw)) values[rule.column] = raw;
+      else fields[key] = `ค่าที่อนุญาต: ${rule.values.join(", ")}`;
+    } else if (rule.type === "bool") {
+      if (typeof raw === "boolean") values[rule.column] = raw ? 1 : 0;
+      else fields[key] = "ต้องเป็น true หรือ false";
+    }
+  }
+  if (partial && !Object.keys(values).length && !Object.keys(fields).length) fields.body = "กรุณาส่งข้อมูลที่ต้องการแก้ไขอย่างน้อยหนึ่งรายการ";
+  return { values, fields };
+}
+function adminMarketOut(row) { return { id: row.id, marketName: row.marketName, address: row.address, openTime: row.openTime, closeTime: row.closeTime, description: row.description, isActive: Boolean(row.isActive) }; }
+const ADMIN_MARKET_SELECT = `SELECT ${MARKET_FIELDS}, is_active AS isActive FROM markets`;
+const ADMIN_EVENT_SELECT = "SELECT e.id, e.market_id AS marketId, e.event_name AS eventName, e.event_date AS eventDate, e.open_time AS ownOpenTime, e.close_time AS ownCloseTime, COALESCE(e.open_time, m.open_time) AS openTime, COALESCE(e.close_time, m.close_time) AS closeTime, e.status, (SELECT COUNT(*) FROM bookings x WHERE x.event_id = e.id AND x.status IN ('pending','confirmed')) AS bookedCount, (SELECT COALESCE(SUM(x.price_at_booking), 0) FROM bookings x WHERE x.event_id = e.id AND x.status = 'confirmed') AS revenue FROM market_events e JOIN markets m ON m.id = e.market_id";
+const ADMIN_BOOTH_SELECT = "SELECT id, market_id AS marketId, booth_code AS boothCode, map_x AS mapX, map_y AS mapY, width, depth, base_price AS price, status FROM booths";
+
+app.get(`${API}/admin/overview`, ...adminOnly, async (req, res) => {
+  try {
+    const today = todayInMarket();
+    const [[shops]] = await database.execute("SELECT COUNT(*) AS total, COALESCE(SUM(u.is_active = 1), 0) AS active FROM shops s JOIN users u ON u.id = s.user_id");
+    const [[rounds]] = await database.execute("SELECT COUNT(*) AS upcoming, MAX(event_date) AS lastDate FROM market_events WHERE status <> 'cancelled' AND event_date >= ?", [today]);
+    const [next] = await database.execute(`${ADMIN_EVENT_SELECT} WHERE e.status <> 'cancelled' AND e.event_date >= ? ORDER BY e.event_date LIMIT 1`, [today]);
+    let nextEvent = null;
+    if (next.length) {
+      const [[booths]] = await database.execute("SELECT COUNT(*) AS total, COALESCE(SUM(status = 'available'), 0) AS usable FROM booths WHERE market_id = ?", [next[0].marketId]);
+      nextEvent = { ...withBookable(next[0]), boothTotal: booths.total, boothUsable: Number(booths.usable) };
+    }
+    res.json({ data: { shops: { total: shops.total, active: Number(shops.active) }, upcomingEvents: rounds.upcoming, lastEventDate: rounds.lastDate, nextEvent } });
+  } catch (error) { serverError(res, "Admin overview", error, "ไม่สามารถโหลดภาพรวมได้"); }
+});
+
+app.get(`${API}/admin/markets`, ...adminOnly, async (req, res) => {
+  try {
+    const [rows] = await database.execute(`${ADMIN_MARKET_SELECT} ORDER BY id`);
+    res.json({ data: rows.map(adminMarketOut), pagination: { page: 1, limit: rows.length || 1, total: rows.length, totalPages: rows.length ? 1 : 0 } });
+  } catch (error) { serverError(res, "Admin markets", error, "ไม่สามารถโหลดข้อมูลตลาดได้"); }
+});
+
+app.patch(`${API}/admin/markets/:marketId`, ...adminOnly, async (req, res) => {
+  const marketId = toId(req.params.marketId);
+  if (!marketId) return fail(res, 400, "INVALID_ID", "รหัสตลาดไม่ถูกต้อง");
+  const { values, fields } = readBody(req.body, MARKET_RULES, true);
+  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลที่ส่งมาไม่ถูกต้อง", fields);
+  try {
+    const columns = Object.keys(values);
+    const [result] = await database.execute(`UPDATE markets SET ${columns.map(column => `${column} = ?`).join(", ")}, updated_at = ? WHERE id = ?`, [...Object.values(values), nowSeconds(), marketId]);
+    if (!result.affectedRows) return fail(res, 404, "MARKET_NOT_FOUND", "ไม่พบตลาดนี้");
+    const [rows] = await database.execute(`${ADMIN_MARKET_SELECT} WHERE id = ?`, [marketId]);
+    audit("admin.market_updated", { adminId: req.user.userId, marketId, fields: columns });
+    res.json({ data: adminMarketOut(rows[0]) });
+  } catch (error) { serverError(res, "Admin update market", error, "ไม่สามารถบันทึกข้อมูลตลาดได้"); }
+});
+
+app.get(`${API}/admin/markets/:marketId/events`, ...adminOnly, validatePage, async (req, res) => {
+  const marketId = toId(req.params.marketId);
+  if (!marketId) return fail(res, 400, "INVALID_ID", "รหัสตลาดไม่ถูกต้อง");
+  const query = readQuery(req, res, { fromDate: "date", toDate: "date", status: ADMIN_EVENT_STATUSES, order: ["asc", "desc"] });
+  if (!query) return;
+  try {
+    const where = "WHERE e.market_id = ? AND (? IS NULL OR e.event_date >= ?) AND (? IS NULL OR e.event_date <= ?) AND (? IS NULL OR e.status = ?)";
+    const params = [marketId, query.fromDate, query.fromDate, query.toDate, query.toDate, query.status, query.status];
+    const order = query.order === "desc" ? "DESC" : "ASC";
+    const [[{ total }]] = await database.execute(`SELECT COUNT(*) AS total FROM market_events e ${where}`, params);
+    const [rows] = await database.execute(`${ADMIN_EVENT_SELECT} ${where} ORDER BY e.event_date ${order}, e.id ${order} LIMIT ? OFFSET ?`, [...params, req.paging.limit, req.paging.offset]);
+    sendList(res, rows.map(withBookable), req.paging, total);
+  } catch (error) { serverError(res, "Admin events", error, "ไม่สามารถโหลดรอบตลาดได้"); }
+});
+
+// Creates one round, or the same weekday for several weeks (repeatWeeks 1–26). Dates that already have a round are skipped.
+app.post(`${API}/admin/markets/:marketId/events`, ...adminOnly, async (req, res) => {
+  const marketId = toId(req.params.marketId);
+  if (!marketId) return fail(res, 400, "INVALID_ID", "รหัสตลาดไม่ถูกต้อง");
+  const { values, fields } = readBody(req.body, EVENT_RULES, false, ["repeatWeeks"]);
+  const repeatWeeks = req.body?.repeatWeeks === undefined ? 1 : req.body.repeatWeeks;
+  if (!Number.isInteger(repeatWeeks) || repeatWeeks < 1 || repeatWeeks > 26) fields.repeatWeeks = "จำนวนสัปดาห์ต้องเป็น 1–26";
+  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลที่ส่งมาไม่ถูกต้อง", fields);
+  let connection;
+  try {
+    const [markets] = await database.execute("SELECT id FROM markets WHERE id = ?", [marketId]);
+    if (!markets.length) return fail(res, 404, "MARKET_NOT_FOUND", "ไม่พบตลาดนี้");
+    connection = await database.getConnection();
+    await connection.beginTransaction();
+    const created = [];
+    const skipped = [];
+    const date = new Date(`${values.event_date}T00:00:00Z`);
+    for (let week = 0; week < repeatWeeks; week += 1) {
+      const eventDate = date.toISOString().slice(0, 10);
+      const [existing] = await connection.execute("SELECT id FROM market_events WHERE market_id = ? AND event_date = ? AND status <> 'cancelled' LIMIT 1", [marketId, eventDate]);
+      if (existing.length) skipped.push(eventDate);
+      else {
+        const [insert] = await connection.execute("INSERT INTO market_events (market_id, event_name, event_date, open_time, close_time, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)", [marketId, values.event_name, eventDate, values.open_time ?? null, values.close_time ?? null, values.status || "scheduled", nowSeconds()]);
+        created.push(insert.insertId);
+      }
+      date.setUTCDate(date.getUTCDate() + 7);
+    }
+    await connection.commit();
+    const [rows] = created.length ? await database.query(`${ADMIN_EVENT_SELECT} WHERE e.id IN (?) ORDER BY e.event_date`, [created]) : [[]];
+    audit("admin.events_created", { adminId: req.user.userId, marketId, count: created.length });
+    res.status(created.length ? 201 : 200).json({ data: { created: rows.map(withBookable), skippedDates: skipped } });
+  } catch (error) {
+    if (connection) await connection.rollback().catch(() => {});
+    serverError(res, "Admin create events", error, "ไม่สามารถเพิ่มรอบตลาดได้");
+  } finally { connection?.release(); }
+});
+
+// Cancelling a round also cancels its active bookings, so shops see the change in their booking history.
+app.patch(`${API}/admin/events/:eventId`, ...adminOnly, async (req, res) => {
+  const eventId = toId(req.params.eventId);
+  if (!eventId) return fail(res, 400, "INVALID_ID", "รหัสรอบตลาดไม่ถูกต้อง");
+  const { values, fields } = readBody(req.body, EVENT_RULES, true);
+  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลที่ส่งมาไม่ถูกต้อง", fields);
+  let connection;
+  try {
+    connection = await database.getConnection();
+    await connection.beginTransaction();
+    const [events] = await connection.execute("SELECT id, status FROM market_events WHERE id = ? FOR UPDATE", [eventId]);
+    if (!events.length) { await connection.rollback(); return fail(res, 404, "EVENT_NOT_FOUND", "ไม่พบรอบตลาดนี้"); }
+    const columns = Object.keys(values);
+    await connection.execute(`UPDATE market_events SET ${columns.map(column => `${column} = ?`).join(", ")} WHERE id = ?`, [...Object.values(values), eventId]);
+    let cancelledBookings = 0;
+    if (values.status === "cancelled" && events[0].status !== "cancelled") {
+      const now = nowSeconds();
+      const [result] = await connection.execute("UPDATE bookings SET status = 'cancelled', cancelled_at = ?, updated_at = ? WHERE event_id = ? AND status IN ('pending','confirmed')", [now, now, eventId]);
+      cancelledBookings = result.affectedRows;
+    }
+    await connection.commit();
+    const [rows] = await database.execute(`${ADMIN_EVENT_SELECT} WHERE e.id = ?`, [eventId]);
+    audit("admin.event_updated", { adminId: req.user.userId, eventId, fields: columns, cancelledBookings });
+    res.json({ data: { ...withBookable(rows[0]), cancelledBookings } });
+  } catch (error) {
+    if (connection) await connection.rollback().catch(() => {});
+    serverError(res, "Admin update event", error, "ไม่สามารถบันทึกรอบตลาดได้");
+  } finally { connection?.release(); }
+});
+
+app.get(`${API}/admin/markets/:marketId/booths`, ...adminOnly, async (req, res) => {
+  const marketId = toId(req.params.marketId);
+  if (!marketId) return fail(res, 400, "INVALID_ID", "รหัสตลาดไม่ถูกต้อง");
+  try {
+    const [rows] = await database.execute(`${ADMIN_BOOTH_SELECT} WHERE market_id = ? ORDER BY booth_code LIMIT 500`, [marketId]);
+    res.json({ data: rows, pagination: { page: 1, limit: 500, total: rows.length, totalPages: rows.length ? 1 : 0 } });
+  } catch (error) { serverError(res, "Admin booths", error, "ไม่สามารถโหลดแผงได้"); }
+});
+
+app.post(`${API}/admin/markets/:marketId/booths`, ...adminOnly, async (req, res) => {
+  const marketId = toId(req.params.marketId);
+  if (!marketId) return fail(res, 400, "INVALID_ID", "รหัสตลาดไม่ถูกต้อง");
+  const { values, fields } = readBody(req.body, BOOTH_RULES, false);
+  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลที่ส่งมาไม่ถูกต้อง", fields);
+  try {
+    const [markets] = await database.execute("SELECT id FROM markets WHERE id = ?", [marketId]);
+    if (!markets.length) return fail(res, 404, "MARKET_NOT_FOUND", "ไม่พบตลาดนี้");
+    const now = nowSeconds();
+    const data = { status: "available", ...values, market_id: marketId, created_at: now, updated_at: now };
+    const [insert] = await database.execute(`INSERT INTO booths (${Object.keys(data).join(", ")}) VALUES (${Object.keys(data).map(() => "?").join(", ")})`, Object.values(data));
+    const [rows] = await database.execute(`${ADMIN_BOOTH_SELECT} WHERE id = ?`, [insert.insertId]);
+    audit("admin.booth_created", { adminId: req.user.userId, boothId: insert.insertId });
+    res.status(201).json({ data: rows[0] });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") return fail(res, 409, "BOOTH_CODE_EXISTS", "หมายเลขแผงนี้มีอยู่แล้ว", { boothCode: "หมายเลขแผงซ้ำ" });
+    serverError(res, "Admin create booth", error, "ไม่สามารถเพิ่มแผงได้");
+  }
+});
+
+app.patch(`${API}/admin/booths/:boothId`, ...adminOnly, async (req, res) => {
+  const boothId = toId(req.params.boothId);
+  if (!boothId) return fail(res, 400, "INVALID_ID", "รหัสแผงไม่ถูกต้อง");
+  const { values, fields } = readBody(req.body, BOOTH_RULES, true);
+  if (Object.keys(fields).length) return fail(res, 400, "VALIDATION_ERROR", "ข้อมูลที่ส่งมาไม่ถูกต้อง", fields);
+  try {
+    const columns = Object.keys(values);
+    const [result] = await database.execute(`UPDATE booths SET ${columns.map(column => `${column} = ?`).join(", ")}, updated_at = ? WHERE id = ?`, [...Object.values(values), nowSeconds(), boothId]);
+    if (!result.affectedRows) return fail(res, 404, "BOOTH_NOT_FOUND", "ไม่พบแผงนี้");
+    const [rows] = await database.execute(`${ADMIN_BOOTH_SELECT} WHERE id = ?`, [boothId]);
+    audit("admin.booth_updated", { adminId: req.user.userId, boothId, fields: columns });
+    res.json({ data: rows[0] });
+  } catch (error) {
+    if (error.code === "ER_DUP_ENTRY") return fail(res, 409, "BOOTH_CODE_EXISTS", "หมายเลขแผงนี้มีอยู่แล้ว", { boothCode: "หมายเลขแผงซ้ำ" });
+    serverError(res, "Admin update booth", error, "ไม่สามารถบันทึกแผงได้");
+  }
+});
+
+app.get(`${API}/admin/bookings`, ...adminOnly, validatePage, async (req, res) => {
+  const query = readQuery(req, res, { eventId: "id", status: BOOKING_STATUSES, q: 100 });
+  if (!query) return;
+  try {
+    let where = "WHERE (? IS NULL OR bk.event_id = ?) AND (? IS NULL OR bk.status = ?)";
+    const params = [query.eventId, query.eventId, query.status, query.status];
+    if (query.q) { where += " AND (s.shop_name LIKE ? OR b.booth_code LIKE ? OR u.email LIKE ?)"; params.push(likePattern(query.q), likePattern(query.q), likePattern(query.q)); }
+    const from = "FROM bookings bk JOIN shops s ON s.id = bk.shop_id JOIN users u ON u.id = s.user_id JOIN market_events e ON e.id = bk.event_id JOIN markets m ON m.id = e.market_id JOIN booths b ON b.id = bk.booth_id";
+    const [[{ total }]] = await database.execute(`SELECT COUNT(*) AS total ${from} ${where}`, params);
+    const [rows] = await database.execute(`SELECT bk.id, bk.status, bk.price_at_booking AS price, bk.booked_at AS bookedAt, bk.cancelled_at AS cancelledAt, e.id AS eventId, e.event_name AS eventName, e.event_date AS eventDate, b.id AS boothId, b.booth_code AS boothCode, s.id AS shopId, s.shop_name AS shopName, s.contact_name AS contactName, s.contact_phone AS contactPhone, u.email, u.is_active AS isActive ${from} ${where} ORDER BY e.event_date DESC, b.booth_code LIMIT ? OFFSET ?`, [...params, req.paging.limit, req.paging.offset]);
+    sendList(res, rows.map(row => ({
+      id: row.id, status: row.status, price: row.price, bookedAt: row.bookedAt, cancelledAt: row.cancelledAt,
+      event: { id: row.eventId, eventName: row.eventName, eventDate: row.eventDate },
+      booth: { id: row.boothId, boothCode: row.boothCode },
+      shop: { id: row.shopId, shopName: row.shopName, contactName: row.contactName, contactPhone: row.contactPhone, email: row.email, isActive: Boolean(row.isActive) }
+    })), req.paging, total);
+  } catch (error) { serverError(res, "Admin bookings", error, "ไม่สามารถโหลดรายการจองได้"); }
+});
+
+// Allowed transitions: pending → confirmed/rejected/cancelled, confirmed → rejected/cancelled.
+app.post(`${API}/admin/bookings/:bookingId/status`, ...adminOnly, async (req, res) => {
+  const bookingId = toId(req.params.bookingId);
+  if (!bookingId) return fail(res, 404, "BOOKING_NOT_FOUND", "ไม่พบรายการจอง");
+  const status = req.body?.status;
+  if (!["confirmed", "rejected", "cancelled"].includes(status)) return fail(res, 400, "VALIDATION_ERROR", "สถานะไม่ถูกต้อง", { status: "ค่าที่อนุญาต: confirmed, rejected, cancelled" });
+  let connection;
+  try {
+    connection = await database.getConnection();
+    await connection.beginTransaction();
+    const [rows] = await connection.execute("SELECT status FROM bookings WHERE id = ? FOR UPDATE", [bookingId]);
+    if (!rows.length) { await connection.rollback(); return fail(res, 404, "BOOKING_NOT_FOUND", "ไม่พบรายการจอง"); }
+    const allowed = { pending: ["confirmed", "rejected", "cancelled"], confirmed: ["rejected", "cancelled"] }[rows[0].status] || [];
+    if (!allowed.includes(status)) { await connection.rollback(); return fail(res, 409, "INVALID_STATUS_CHANGE", "เปลี่ยนสถานะรายการนี้ไม่ได้"); }
+    const now = nowSeconds();
+    await connection.execute("UPDATE bookings SET status = ?, cancelled_at = ?, updated_at = ? WHERE id = ?", [status, status === "cancelled" ? now : null, now, bookingId]);
+    await connection.commit();
+    audit("admin.booking_status", { adminId: req.user.userId, bookingId, from: rows[0].status, to: status });
+    res.json({ data: { id: bookingId, status, cancelledAt: status === "cancelled" ? now.toISOString() : null } });
+  } catch (error) {
+    if (connection) await connection.rollback().catch(() => {});
+    if (error.code === "ER_DUP_ENTRY") return fail(res, 409, "BOOTH_UNAVAILABLE", "แผงนี้มีการจองอื่นที่ยังใช้งานอยู่");
+    serverError(res, "Admin booking status", error, "ไม่สามารถเปลี่ยนสถานะการจองได้");
+  } finally { connection?.release(); }
+});
+
+app.get(`${API}/admin/shops`, ...adminOnly, validatePage, async (req, res) => {
+  const query = readQuery(req, res, { q: 100, status: ["active", "disabled"] });
+  if (!query) return;
+  try {
+    let where = "WHERE 1 = 1";
+    const params = [];
+    if (query.q) { where += " AND (s.shop_name LIKE ? OR u.email LIKE ? OR s.category LIKE ? OR s.contact_phone LIKE ?)"; params.push(...Array(4).fill(likePattern(query.q))); }
+    if (query.status) { where += " AND u.is_active = ?"; params.push(query.status === "active" ? 1 : 0); }
+    const [[{ total }]] = await database.execute(`SELECT COUNT(*) AS total FROM shops s JOIN users u ON u.id = s.user_id ${where}`, params);
+    const [rows] = await database.execute(`SELECT s.id, s.shop_name AS shopName, s.category, s.contact_name AS contactName, s.contact_phone AS contactPhone, s.image_url AS imageUrl, s.created_at AS createdAt, u.id AS userId, u.email, u.phone, u.role, u.is_active AS isActive, (SELECT COUNT(*) FROM bookings x JOIN market_events xe ON xe.id = x.event_id WHERE x.shop_id = s.id AND x.status = 'confirmed' AND xe.event_date >= ?) AS upcomingBookings, (SELECT COUNT(*) FROM bookings x WHERE x.shop_id = s.id) AS totalBookings FROM shops s JOIN users u ON u.id = s.user_id ${where} ORDER BY s.created_at DESC, s.id DESC LIMIT ? OFFSET ?`, [todayInMarket(), ...params, req.paging.limit, req.paging.offset]);
+    sendList(res, rows.map(row => ({ ...row, isActive: Boolean(row.isActive) })), req.paging, total);
+  } catch (error) { serverError(res, "Admin shops", error, "ไม่สามารถโหลดรายชื่อร้านได้"); }
+});
+
+app.patch(`${API}/admin/shops/:shopId`, ...adminOnly, async (req, res) => {
+  const shopId = toId(req.params.shopId);
+  if (!shopId) return fail(res, 400, "INVALID_ID", "รหัสร้านไม่ถูกต้อง");
+  if (!isPlainObject(req.body) || typeof req.body.isActive !== "boolean" || Object.keys(req.body).length !== 1) return fail(res, 400, "VALIDATION_ERROR", "ส่งได้เฉพาะ isActive (true/false)", { isActive: "ต้องเป็น true หรือ false" });
+  try {
+    const [shops] = await database.execute("SELECT user_id AS userId FROM shops WHERE id = ?", [shopId]);
+    if (!shops.length) return fail(res, 404, "SHOP_NOT_FOUND", "ไม่พบร้านนี้");
+    if (shops[0].userId === req.user.userId) return fail(res, 422, "CANNOT_DISABLE_SELF", "ปิดใช้งานบัญชีของตัวเองไม่ได้");
+    await database.execute("UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?", [req.body.isActive ? 1 : 0, nowSeconds(), shops[0].userId]);
+    if (!req.body.isActive) for (const [token, session] of sessions) if (session.userId === shops[0].userId) sessions.delete(token);
+    audit("admin.shop_status", { adminId: req.user.userId, shopId, isActive: req.body.isActive });
+    res.json({ data: { id: shopId, isActive: req.body.isActive } });
+  } catch (error) { serverError(res, "Admin shop status", error, "ไม่สามารถเปลี่ยนสถานะร้านได้"); }
 });
 
 app.use("/api", (req, res) => fail(res, 404, "NOT_FOUND", "ไม่พบ endpoint ที่เรียก"));
@@ -534,6 +940,7 @@ async function initializeDatabase() {
       email VARCHAR(255) NOT NULL,
       phone VARCHAR(20) NULL,
       password_hash VARCHAR(255) NOT NULL,
+      role VARCHAR(20) NOT NULL DEFAULT 'shop',
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       is_active TINYINT(1) NOT NULL DEFAULT 1,
@@ -546,7 +953,10 @@ async function initializeDatabase() {
       shop_name VARCHAR(150) NOT NULL,
       category VARCHAR(100) NULL,
       description TEXT NULL,
+      contact_name VARCHAR(100) NULL,
       contact_phone VARCHAR(20) NULL,
+      social_url VARCHAR(255) NULL,
+      image_url VARCHAR(255) NULL,
       created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE KEY uq_shops_user (user_id),
@@ -613,7 +1023,15 @@ async function initializeDatabase() {
       CONSTRAINT fk_bookings_shop FOREIGN KEY (shop_id) REFERENCES shops(id) ON DELETE RESTRICT ON UPDATE RESTRICT
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   ];
+  // Upgrades tables created before roles, contact names, follow links and shop photos existed.
+  statements.push(
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS role VARCHAR(20) NOT NULL DEFAULT 'shop' AFTER password_hash",
+    "ALTER TABLE shops ADD COLUMN IF NOT EXISTS contact_name VARCHAR(100) NULL AFTER description",
+    "ALTER TABLE shops ADD COLUMN IF NOT EXISTS social_url VARCHAR(255) NULL AFTER contact_phone",
+    "ALTER TABLE shops ADD COLUMN IF NOT EXISTS image_url VARCHAR(255) NULL AFTER social_url"
+  );
   for (const statement of statements) await database.query(statement);
+  fs.mkdirSync(SHOP_IMAGE_DIR, { recursive: true });
   await seedInitialData();
 }
 
