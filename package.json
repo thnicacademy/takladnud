@@ -1,0 +1,14 @@
+{
+  "name": "thai-starter-project",
+  "version": "1.0.0",
+  "description": "ตากหลาดนัด - ระบบจองแผงและแผนผังตลาดนัด",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "express": "^4.21.2",
+    "mysql2": "^3.14.0"
+  }
+}
