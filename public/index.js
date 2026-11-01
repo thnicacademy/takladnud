@@ -3,7 +3,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const PHONE_PATTERN = /^(0\d{8,9}|\+66\d{8,9})$/;
 const PHONE_MESSAGE = "เบอร์โทรต้องเป็นตัวเลข 9–10 หลักขึ้นต้นด้วย 0 เช่น 0812345678";
 const ZOOM_STEPS = [1, 1.5, 2, 2.5];
-const PLACEHOLDER_IMAGE = "/images/shop-placeholder.svg";
+const PLACEHOLDER_IMAGE = "/images/shop-placeholder.png";
 // Rough box around Tak province; used to frame the map and to sanity-check coordinates before the server does.
 const TAK_BOUNDS = [[15.55, 97.85], [17.8, 99.45]];
 const TAK_LIMITS = { lat: [15, 18], lng: [97.3, 99.8] };
@@ -200,7 +200,7 @@ function notify(message, tone = "info") {
 }
 function stateBox(kind, message, extra = "", art = "") {
   const icon = { loading: "", empty: "○", error: "!" }[kind] ?? "○";
-  const visual = art ? `<img class="state-art" src="/images/${art}.svg" alt="" width="200" height="160">` : `<span class="state-icon" aria-hidden="true">${icon}</span>`;
+  const visual = art ? `<img class="state-art" src="/images/${art}.png" alt="" width="200" height="160">` : `<span class="state-icon" aria-hidden="true">${icon}</span>`;
   return `<div class="state-box state-${kind}" ${kind === "error" ? 'role="alert"' : ""}>${visual}<p>${escapeHtml(message)}</p>${extra}</div>`;
 }
 const retryButton = '<button type="button" class="button button-outline" data-retry>ลองอีกครั้ง</button>';

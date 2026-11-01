@@ -73,7 +73,7 @@ p { margin: 0 0 12px; }
 
 /* ---------- Header ---------- */
 .site-header { position: sticky; top: 0; z-index: 20; background: rgba(251, 248, 241, 0.92); backdrop-filter: saturate(1.4) blur(10px); -webkit-backdrop-filter: saturate(1.4) blur(10px); }
-.site-header::after { content: ""; display: block; height: 14px; background: url("/images/pattern-awning.svg") repeat-x left top / 70px 14px; }
+.site-header::after { content: ""; display: block; height: 14px; background: url("/images/pattern-awning.png") repeat-x left top / 70px 14px; }
 .header-inner { min-height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .brand { display: flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; }
 .brand-logo { width: 46px; height: 46px; flex: 0 0 auto; border-radius: 14px; }
@@ -443,7 +443,7 @@ button.booth-pin:hover:not(:disabled) { z-index: 5; transform: translate(-50%, -
 
 /* ---------- Footer ---------- */
 .site-footer { margin-top: 48px; padding: 30px 0; background: var(--primary); color: #e6f2ea; font-size: 16px; }
-.site-footer::before { content: ""; display: block; height: 14px; margin-top: -44px; margin-bottom: 30px; background: url("/images/pattern-awning.svg") repeat-x left top / 70px 14px; transform: scaleY(-1); }
+.site-footer::before { content: ""; display: block; height: 14px; margin-top: -44px; margin-bottom: 30px; background: url("/images/pattern-awning.png") repeat-x left top / 70px 14px; transform: scaleY(-1); }
 .footer-inner { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px 28px; }
 .footer-brand { display: flex; align-items: center; gap: 12px; }
 .footer-brand img { border-radius: 12px; background: #fff; }
