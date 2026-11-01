@@ -4,6 +4,5 @@ node_modules/
 .env.*
 
 # Submitted separately from application source.
-migration.sql
 migrations.sql
 package-lock.json
